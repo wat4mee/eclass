@@ -22,6 +22,7 @@ from eclass.activities import (
 )
 from eclass.ai import AIError, get_provider
 from eclass.auth import EClassClient
+from eclass.lock import exclusive_run
 from eclass.courses import list_courses, parse_course_page
 from eclass.files import download_links, download_ubfile, safe_name, section_dir
 
@@ -89,6 +90,11 @@ def sync_course(client, conn, course, files_root, refresh, stats):
 
 
 def main():
+    with exclusive_run(DATA_DIR / ".run.lock"):
+        return _main()
+
+
+def _main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--course", type=int, action="append", help="course id (repeatable)")
     ap.add_argument("--all", action="store_true", help="sync every course on the dashboard")

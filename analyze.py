@@ -13,6 +13,7 @@ from pathlib import Path
 
 from eclass import db, extract, study
 from eclass.ai import AIError, get_provider
+from eclass.lock import exclusive_run
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
 
@@ -64,7 +65,11 @@ def main():
     conn = db.connect(args.db)
     if args.show is not None:
         return show(conn, args.show)
+    with exclusive_run(DATA_DIR / ".run.lock"):
+        return run(conn, args)
 
+
+def run(conn, args):
     print("extracting text...")
     print(" ", extract.extract_pending(conn))
     if args.extract_only:
