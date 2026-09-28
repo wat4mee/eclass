@@ -1,0 +1,7 @@
+requests
+beautifulsoup4
+python-dotenv
+pymupdf
+python-pptx
+python-docx
+ocrmac; sys_platform == "darwin"
