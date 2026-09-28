@@ -1,27 +1,92 @@
 {% extends "base.html" %}
 {% set LABELS = {"overdue": "Muddati o'tgan", "soon": "Yaqin", "upcoming": "Kutilmoqda",
                  "nodate": "Muddatsiz", "done": "Topshirilgan"} %}
+{% set C = 376.99 %}
 {% block title %}Baholar · eClass Companion{% endblock %}
+{% block style %}
+.g-hero { display: grid; grid-template-columns: auto 1fr; gap: 34px; align-items: center; padding: 30px; margin: 4px 0 20px; overflow: hidden; }
+.g-hero::after { content: ""; position: absolute; left: -100px; bottom: -160px; width: 360px; height: 360px; border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--ok) 20%, transparent), transparent 65%); pointer-events: none; }
+.big-ring { position: relative; width: 150px; height: 150px; }
+.big-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.big-ring circle { fill: none; stroke-width: 11; }
+.big-ring .bg { stroke: var(--surface-3); }
+.big-ring .val { stroke: url(#g-grad); stroke-linecap: round; stroke-dasharray: {{ C }}; stroke-dashoffset: var(--off);
+  animation: ring-fill 1.8s var(--ease) both calc(.3s + var(--intro-delay)); }
+@keyframes ring-fill { from { stroke-dashoffset: {{ C }}; } }
+.big-ring .center { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+.big-ring .center b { font-family: var(--display); font-weight: 400; font-size: 50px; line-height: 1; }
+.g-hero .display { font-size: clamp(36px, 5vw, 56px); margin: 8px 0 16px; }
+.g-stats { display: flex; gap: 26px; flex-wrap: wrap; }
+.g-stats div { display: grid; }
+.g-stats b { font-size: 26px; font-weight: 800; letter-spacing: -.03em; }
+.g-stats span { font-size: 13px; color: var(--muted); font-weight: 600; }
+
+.rows { padding: 8px; }
+.row { display: grid; grid-template-columns: 1.1fr 1.5fr .9fr auto 1.1fr; gap: 16px; align-items: center; padding: 14px 14px;
+  border-radius: 14px; transition: background .25s; }
+.row:hover { background: var(--surface-2); }
+.row + .row { border-top: 1px solid var(--line); }
+.row.head { font-size: 11.5px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); padding-block: 10px; }
+.row.head:hover { background: none; }
+.course-cell { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 14px; }
+.task a { font-weight: 800; }
+.task a:hover { color: var(--accent); }
+.task small { display: block; color: var(--muted); font-size: 12.5px; }
+.grade-cell { display: grid; gap: 6px; }
+.grade-cell .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 14px; }
+.grade-cell b { font-size: 16px; font-weight: 800; }
+@media (max-width: 860px) {
+  .g-hero { grid-template-columns: 1fr; justify-items: start; gap: 18px; }
+  .row { grid-template-columns: 1fr auto; gap: 8px 14px; }
+  .row.head { display: none; }
+  .row .course-cell { grid-column: 1 / -1; }
+  .row .due { grid-column: 1; }
+  .row .grade-cell { grid-column: 1 / -1; }
+}
+{% endblock %}
 {% block content %}
-<h1>Baholar va topshiriqlar</h1>
-<div class="card table-wrap">
-  <table>
-    <thead><tr><th>Kurs</th><th>Topshiriq</th><th>Muddat</th><th>Holat</th><th>Baholash</th><th>Baho</th></tr></thead>
-    <tbody>
-      {% for d in items %}
-      <tr>
-        <td>{{ d.course }}</td>
-        <td><a href="{{ eclass_url }}/mod/assign/view.php?id={{ d.activity_id }}" target="_blank" rel="noopener">{{ d.name }}</a></td>
-        <td class="small">{{ d.due | dt }}</td>
-        <td><span class="badge b-{{ d.state }}">{{ LABELS[d.state] }}</span></td>
-        <td class="small muted">{{ d.grading_status or "—" }}</td>
-        <td>
-          {% if d.grade %}<strong>{{ d.grade }}</strong>{% if d.pct is not none %} <span class="muted small">({{ d.pct }}%)</span>{% endif %}
-          {% else %}<span class="muted">—</span>{% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+<section class="card g-hero reveal">
+  <div class="big-ring">
+    <svg viewBox="0 0 140 140" aria-hidden="true">
+      <defs><linearGradient id="g-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset="1" stop-color="#2dd4bf"/></linearGradient></defs>
+      <circle class="bg" cx="70" cy="70" r="60"/>
+      <circle class="val" cx="70" cy="70" r="60" style="--off: {{ '%.2f' % (C * (1 - (summary.avg or 0) / 100)) }}"/>
+    </svg>
+    <div class="center">
+      {% if summary.avg is not none %}<b class="num" data-count="{{ summary.avg }}" data-suffix="%">{{ summary.avg }}%</b>{% else %}<b>—</b>{% endif %}
+      <span class="eyebrow">o'rtacha</span>
+    </div>
+  </div>
+  <div>
+    <span class="eyebrow">Semestr natijalari</span>
+    <h1 class="display">Baholar va topshiriqlar</h1>
+    <div class="g-stats">
+      <div><b class="num" data-count="{{ summary.graded }}">{{ summary.graded }}</b><span>baholangan</span></div>
+      <div><b class="num" data-count="{{ summary.done }}">{{ summary.done }}</b><span>topshirilgan</span></div>
+      <div><b class="num" data-count="{{ summary.total }}">{{ summary.total }}</b><span>jami topshiriq</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="card rows reveal">
+  <div class="row head"><span>Kurs</span><span>Topshiriq</span><span>Muddat</span><span>Holat</span><span>Baho</span></div>
+  {% for d in items %}
+  <div class="row" style="--c: {{ course_color(d.course_id) }}; --i: {{ loop.index }}">
+    <span class="course-cell"><span class="dot"></span>{{ d.course }}</span>
+    <span class="task">
+      <a href="{{ eclass_url }}/mod/assign/view.php?id={{ d.activity_id }}" target="_blank" rel="noopener">{{ d.name }}</a>
+      <small>{{ d.grading_status or "" }}</small>
+    </span>
+    <span class="small muted due num">{{ d.due | dt }}</span>
+    <span><span class="badge b-{{ d.state }}">{{ LABELS[d.state] }}</span></span>
+    <span class="grade-cell">
+      {% if d.grade %}
+      <span class="top"><b class="num">{{ d.grade }}</b>{% if d.pct is not none %}<span class="muted num">{{ d.pct }}%</span>{% endif %}</span>
+      {% if d.pct is not none %}<span class="bar-track"><span style="--w: {{ d.pct }}%"></span></span>{% endif %}
+      {% else %}<span class="muted">Baholanmagan</span>{% endif %}
+    </span>
+  </div>
+  {% endfor %}
+</section>
 {% endblock %}

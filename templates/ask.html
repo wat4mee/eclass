@@ -1,91 +1,215 @@
 {% extends "base.html" %}
 {% block title %}Kursdan so'ra · eClass Companion{% endblock %}
 {% block style %}
-form.ask { display: grid; gap: 10px; }
-form.ask .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-form.ask select { width: auto; min-width: 220px; }
-.qa { margin-top: 16px; }
-.qa .question { font-weight: 600; margin-bottom: 8px; }
-.qa .answer p { margin: 0 0 10px; }
-.qa .cite { font-size: 12px; vertical-align: super; }
-.sources { margin-top: 10px; font-size: 14px; }
-.sources summary { cursor: pointer; }
-.sources .snippet { color: var(--muted); font-size: 13px; margin: 4px 0 8px; }
-.error { color: var(--bad); }
+.ask { max-width: 860px; margin: 0 auto; }
+.ask-head { text-align: center; margin: 6px 0 18px; }
+.ask-head .display { margin: 10px 0 8px; }
+.scope { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-bottom: 22px; }
+.pill { display: inline-flex; align-items: center; gap: 8px; font: 700 13px var(--font); padding: 7px 14px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--text-2); cursor: pointer;
+  transition: transform .35s var(--spring), background .25s, color .25s, border-color .25s; }
+.pill:hover { transform: translateY(-2px); border-color: var(--line-strong); }
+.pill.on { background: var(--c, var(--text)); border-color: transparent; color: #0b0d12; }
+.pill.all.on { color: var(--bg); }
+.pill.on .dot { background: #0b0d12; box-shadow: none; }
+
+.chat { display: grid; gap: 18px; min-height: 42vh; padding-bottom: 20px; align-content: start; }
+.welcome { display: grid; justify-items: center; gap: 14px; text-align: center; padding: 24px 0 8px; }
+.orb { position: relative; width: 84px; height: 84px; border-radius: 50%; display: grid; place-items: center;
+  background: conic-gradient(from 0deg, var(--accent), var(--accent-2), #60a5fa, var(--accent));
+  box-shadow: 0 0 70px -12px var(--accent); animation: spin 7s linear infinite; }
+.orb::before { content: ""; position: absolute; inset: 5px; border-radius: 50%; background: var(--surface); }
+.orb .ico { position: relative; width: 32px; height: 32px; color: var(--accent); animation: spin 7s linear infinite reverse; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.suggest { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; max-width: 680px; }
+.sugg { font: 600 14px var(--font); padding: 10px 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface);
+  color: var(--text); cursor: pointer; box-shadow: var(--shadow); animation: rise .6s var(--ease) both;
+  transition: transform .35s var(--spring), border-color .2s; }
+.sugg:hover { transform: translateY(-3px); border-color: var(--accent); }
+
+.msg { display: flex; align-items: flex-start; gap: 12px; animation: msg-in .55s var(--spring) both; }
+@keyframes msg-in { from { opacity: 0; transform: translateY(14px) scale(.97); } }
+.msg.user { justify-content: flex-end; }
+.msg.user .bubble { background: var(--text); color: var(--bg); border-radius: 20px 20px 6px 20px; padding: 12px 18px;
+  max-width: 78%; font-weight: 600; transform-origin: bottom right; }
+.avatar { width: 38px; height: 38px; flex: none; border-radius: 13px; display: grid; place-items: center; color: #0b0d12;
+  background: conic-gradient(from 210deg, var(--accent), var(--accent-2), var(--accent)); }
+.avatar .ico { stroke-width: 2.2; }
+.msg.bot .bubble { flex: 1; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 6px 20px 20px 20px;
+  padding: 16px 20px; box-shadow: var(--shadow); }
+.answer p { margin: 0 0 12px; line-height: 1.75; color: var(--text-2); animation: rise .6s var(--ease) both; }
+.answer p:last-child { margin-bottom: 0; }
+.answer strong { color: var(--text); }
+.cite { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; margin: 0 2px; border-radius: 6px;
+  font-size: 11px; font-weight: 800; vertical-align: 2px; color: var(--accent-ink); background: var(--accent); cursor: pointer;
+  transition: transform .3s var(--spring); }
+.cite:hover { transform: scale(1.15); text-decoration: none; }
+.typing { display: inline-flex; gap: 5px; padding: 6px 0; }
+.typing span { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: bounce 1.2s infinite; }
+.typing span:nth-child(2) { animation-delay: .15s; background: color-mix(in srgb, var(--accent) 50%, var(--accent-2)); }
+.typing span:nth-child(3) { animation-delay: .3s; background: var(--accent-2); }
+@keyframes bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-7px); opacity: 1; } }
+.status { font-size: 13px; color: var(--muted); font-weight: 600; margin-top: 4px; }
+.query { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); margin-top: 14px; }
+.query .ico { width: 14px; height: 14px; }
+.sources { display: grid; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--line-strong); }
+.src { border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); transition: border-color .3s, box-shadow .3s; }
+.src.flash { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); }
+.src summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; font-size: 13.5px; }
+.src summary::-webkit-details-marker { display: none; }
+.src-n { width: 24px; height: 24px; flex: none; display: grid; place-items: center; border-radius: 8px; font-weight: 800; font-size: 12px;
+  color: var(--accent-ink); background: var(--accent); }
+.src-title { flex: 1; min-width: 0; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.src-page { font-weight: 700; color: var(--muted); white-space: nowrap; }
+.src .chev { transition: transform .3s var(--ease); color: var(--muted); }
+.src[open] .chev { transform: rotate(90deg); }
+.src-body { padding: 0 12px 12px 46px; }
+.snippet { font-size: 13px; color: var(--muted); line-height: 1.6; margin: 0 0 10px; }
+.src-body .btn { padding: 7px 12px; font-size: 13px; }
+.error { color: var(--bad); font-weight: 700; }
+
+.composer { position: sticky; bottom: 18px; display: flex; align-items: flex-end; gap: 10px; padding: 10px 10px 10px 18px;
+  border-radius: 22px; border: 1px solid var(--line-strong); box-shadow: var(--shadow-lg);
+  background: color-mix(in srgb, var(--surface) 85%, transparent); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+  transition: border-color .25s, box-shadow .25s; }
+.composer:focus-within { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent), var(--shadow-lg); }
+.composer textarea { flex: 1; resize: none; border: 0; outline: none; background: none; color: var(--text); font: 500 16px/1.5 var(--font);
+  padding: 9px 0; max-height: 180px; }
+.send { width: 44px; height: 44px; flex: none; border: 0; border-radius: 14px; display: grid; place-items: center; cursor: pointer;
+  color: var(--accent-ink); background: var(--accent); transition: transform .35s var(--spring), opacity .2s; }
+.send:hover:not(:disabled) { transform: scale(1.08) rotate(-8deg); }
+.send:disabled { opacity: .45; cursor: default; }
+.send .ico { stroke-width: 2.4; }
+.keys { text-align: center; font-size: 12px; color: var(--muted); margin-top: 26px; }
+kbd { font: 700 11px var(--font); padding: 2px 7px; border-radius: 6px; border: 1px solid var(--line-strong); background: var(--surface-2); }
+@media (max-width: 600px) { .msg.user .bubble { max-width: 90%; } .avatar { display: none; } .src-body { padding-left: 12px; } }
 {% endblock %}
 {% block content %}
-<h1>Kursdan so'ra</h1>
-<p class="muted" style="margin-top: -8px">Javob faqat kurs materiallari va darsliklardan olinadi, manbasi ko'rsatiladi.</p>
-<form class="card ask" id="ask">
-  <textarea id="question" rows="3" maxlength="1000" placeholder="Masalan: limitning ta'rifi nima?" required></textarea>
-  <div class="controls">
-    <select id="course">
-      <option value="">Barcha kurslar</option>
-      {% for c in course_list %}
-      <option value="{{ c.id }}" {{ "selected" if c.id == selected }}>{{ c.name }}</option>
-      {% endfor %}
-    </select>
-    <button class="primary" id="send" type="submit">So'rash</button>
-    <span class="muted small" id="status"></span>
+<section class="ask">
+  <header class="ask-head reveal">
+    <span class="eyebrow">AI yordamchi</span>
+    <h1 class="display">Kursdan <em>so'ra</em></h1>
+    <p class="muted">Javoblar faqat ma'ruza va darsliklardan olinadi, manbasi sahifasi bilan ko'rsatiladi.</p>
+  </header>
+
+  <div class="scope reveal" id="scope">
+    <button class="pill all {{ 'on' if not selected }}" type="button" data-course="">Barcha kurslar</button>
+    {% for c in course_list %}
+    <button class="pill {{ 'on' if c.id == selected }}" type="button" data-course="{{ c.id }}" style="--c: {{ course_color(c.id) }}"><span class="dot"></span>{{ c.name }}</button>
+    {% endfor %}
   </div>
-</form>
-<div id="history"></div>
+
+  <div class="chat" id="chat">
+    <div class="welcome reveal" id="welcome">
+      <div class="orb"><svg class="ico"><use href="#i-sparkles"/></svg></div>
+      <p class="muted">Istalgan mavzuni o'zbekcha so'rang. Masalan:</p>
+      <div class="suggest" id="suggest"></div>
+    </div>
+  </div>
+
+  <form class="composer" id="ask">
+    <textarea id="question" rows="1" maxlength="1000" placeholder="Savolingizni yozing…" required></textarea>
+    <button class="send" id="send" type="submit" aria-label="Yuborish"><svg class="ico"><use href="#i-send"/></svg></button>
+  </form>
+  <p class="keys"><kbd>Enter</kbd> yuborish · <kbd>Shift</kbd>+<kbd>Enter</kbd> yangi qator</p>
+</section>
 {% endblock %}
 {% block script %}
 <script>
-const esc = s => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+(() => {
+  const SUGGEST = {{ suggestions | tojson }};
+  const esc = s => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const chat = document.getElementById("chat"), question = document.getElementById("question");
+  const send = document.getElementById("send");
+  let course = "{{ selected or '' }}", counter = 0;
 
-function formatAnswer(text, id) {
-  return esc(text).split(/\n{2,}/).map(p => "<p>" + p
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\n/g, "<br>")
-    .replace(/\[(\d+)\]/g, `<a class="cite" href="#${id}-src-$1">[$1]</a>`) + "</p>").join("");
-}
+  // ---- course scope pills + suggestions
+  const renderSuggestions = () => {
+    const box = document.getElementById("suggest");
+    if (!box) return;
+    box.innerHTML = (SUGGEST[course] || SUGGEST[""] || []).map((t, i) =>
+      `<button class="sugg" type="button" style="animation-delay:${i * 70}ms">${esc(t)} nima?</button>`).join("");
+    box.querySelectorAll(".sugg").forEach(b => b.onclick = () => { question.value = b.textContent; submit(); });
+  };
+  document.querySelectorAll("#scope .pill").forEach(p => p.addEventListener("click", () => {
+    document.querySelectorAll("#scope .pill").forEach(x => x.classList.toggle("on", x === p));
+    course = p.dataset.course;
+    history.replaceState(null, "", course ? `?course=${course}` : location.pathname);
+    renderSuggestions();
+  }));
+  renderSuggestions();
 
-function renderSources(sources, id) {
-  if (!sources.length) return "";
-  const items = sources.map(s => `
-    <li id="${id}-src-${s.n}">
-      <a href="/file/${s.file_id}#page=${s.page}" target="_blank">[${s.n}] ${esc(s.course)} / ${esc(s.filename)}, ${s.page}-sahifa</a>
-      <div class="snippet">${esc(s.text.slice(0, 400))}${s.text.length > 400 ? "…" : ""}</div>
-    </li>`).join("");
-  return `<details class="sources" open><summary>Manbalar (${sources.length})</summary><ul class="list">${items}</ul></details>`;
-}
+  // ---- composer
+  const grow = () => { question.style.height = "auto"; question.style.height = Math.min(question.scrollHeight, 180) + "px"; };
+  question.addEventListener("input", grow);
+  question.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); }
+  });
+  document.getElementById("ask").addEventListener("submit", e => { e.preventDefault(); submit(); });
 
-let counter = 0;
-document.getElementById("ask").addEventListener("submit", async event => {
-  event.preventDefault();
-  const question = document.getElementById("question").value.trim();
-  if (!question) return;
-  const send = document.getElementById("send"), status = document.getElementById("status");
-  send.disabled = true;
-  status.textContent = "Materiallar qidirilmoqda…";
-  const id = "qa" + (++counter);
-  const block = document.createElement("section");
-  block.className = "card qa";
-  block.innerHTML = `<div class="question">${esc(question)}</div><div class="answer muted">…</div>`;
-  document.getElementById("history").prepend(block);
-  try {
-    const response = await fetch("/api/ask", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, course_id: document.getElementById("course").value || null }),
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || response.statusText);
-    block.querySelector(".answer").classList.remove("muted");
-    block.querySelector(".answer").innerHTML = formatAnswer(data.answer, id) + renderSources(data.sources, id);
-    renderMath(block);
-    document.getElementById("question").value = "";
-  } catch (err) {
-    block.querySelector(".answer").innerHTML = `<p class="error">${esc(err.message)}</p>`;
-  } finally {
-    send.disabled = false;
-    status.textContent = "";
+  const formatAnswer = (text, id) => esc(text).split(/\n{2,}/).map((p, i) =>
+    `<p style="animation-delay:${i * 110}ms">` + p
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\n/g, "<br>")
+      .replace(/\[(\d+)\]/g, `<a class="cite" href="#${id}-src-$1" data-src="${id}-src-$1">$1</a>`) + "</p>").join("");
+
+  const renderSources = (sources, id) => !sources.length ? "" : `<div class="sources">${sources.map(s => `
+    <details class="src" id="${id}-src-${s.n}">
+      <summary><span class="src-n">${s.n}</span><span class="src-title">${esc(s.filename)}</span>
+        <span class="src-page">${s.page}-bet</span><svg class="ico chev"><use href="#i-right"/></svg></summary>
+      <div class="src-body">
+        <p class="snippet">${esc(s.text.replace(/\s+/g, " ").slice(0, 420))}${s.text.length > 420 ? "…" : ""}</p>
+        <a class="btn" href="/file/${s.file_id}#page=${s.page}" target="_blank">Manbani ochish<svg class="ico"><use href="#i-external"/></svg></a>
+      </div>
+    </details>`).join("")}</div>`;
+
+  const scrollDown = el => el.scrollIntoView({ behavior: REDUCED_MOTION ? "auto" : "smooth", block: "end" });
+
+  async function submit() {
+    const text = question.value.trim();
+    if (!text || send.disabled) return;
+    document.getElementById("welcome")?.remove();
+    const id = "qa" + (++counter);
+    chat.insertAdjacentHTML("beforeend", `<div class="msg user"><div class="bubble">${esc(text)}</div></div>`);
+    chat.insertAdjacentHTML("beforeend", `
+      <div class="msg bot" id="${id}">
+        <div class="avatar"><svg class="ico"><use href="#i-sparkles"/></svg></div>
+        <div class="bubble"><div class="typing"><span></span><span></span><span></span></div>
+          <div class="status">Materiallar qidirilmoqda…</div></div>
+      </div>`);
+    const bot = document.getElementById(id), bubble = bot.querySelector(".bubble");
+    scrollDown(bot);
+    question.value = ""; grow(); send.disabled = true;
+    const phase = setTimeout(() => { const s = bubble.querySelector(".status"); if (s) s.textContent = "Javob yozilmoqda…"; }, 1600);
+    try {
+      const response = await fetch("/api/ask", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: text, course_id: course || null }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || response.statusText);
+      bubble.innerHTML = `<div class="answer">${formatAnswer(data.answer, id)}</div>
+        <div class="query"><svg class="ico"><use href="#i-target"/></svg>Qidiruv: ${esc(data.query || "")}</div>
+        ${renderSources(data.sources, id)}`;
+      renderMath(bubble);
+      bubble.querySelectorAll(".cite").forEach(a => a.addEventListener("click", e => {
+        e.preventDefault();
+        const src = document.getElementById(a.dataset.src);
+        if (!src) return;
+        src.open = true;
+        src.scrollIntoView({ behavior: REDUCED_MOTION ? "auto" : "smooth", block: "center" });
+        src.classList.remove("flash"); void src.offsetWidth; src.classList.add("flash");
+        setTimeout(() => src.classList.remove("flash"), 1400);
+      }));
+    } catch (err) {
+      bubble.innerHTML = `<p class="error">${esc(err.message)}</p>`;
+    } finally {
+      clearTimeout(phase);
+      send.disabled = false;
+      question.focus();
+      scrollDown(bot);
+    }
   }
-});
-document.getElementById("question").addEventListener("keydown", e => {
-  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) document.getElementById("ask").requestSubmit();
-});
+})();
 </script>
 {% endblock %}

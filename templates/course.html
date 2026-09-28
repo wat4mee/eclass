@@ -1,57 +1,132 @@
 {% extends "base.html" %}
 {% set LABELS = {"overdue": "Muddati o'tgan", "soon": "Yaqin", "upcoming": "Kutilmoqda",
                  "nodate": "Muddatsiz", "done": "Topshirilgan"} %}
+{% set TYPE = {"ubfile": ("i-file", "Fayl", "#60a5fa"), "folder": ("i-folder", "Papka", "#f59e0b"),
+               "url": ("i-play", "Video", "#f43f5e"), "assign": ("i-task", "Topshiriq", "#a78bfa"),
+               "ubboard": ("i-board", "Doska", "#94a3b8")} %}
 {% block title %}{{ course.name }} · eClass Companion{% endblock %}
 {% block style %}
-.week { margin-bottom: 14px; }
-.act { display: flex; gap: 10px; align-items: flex-start; }
-.act .kind { font-size: 12px; color: var(--muted); min-width: 64px; padding-top: 2px; }
-.files { margin: 4px 0 0; padding-left: 0; list-style: none; }
-.files li { font-size: 14px; }
+html { scroll-behavior: smooth; }
+.course-hero { padding: 30px; margin: 4px 0 20px; overflow: hidden;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--c) 16%, var(--surface)) 0%, var(--surface) 60%); }
+.course-hero::after { content: ""; position: absolute; right: -120px; top: -140px; width: 380px; height: 380px; border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--c) 30%, transparent), transparent 65%);
+  animation: drift 16s var(--ease) infinite alternate; pointer-events: none; }
+.course-hero .display { font-size: clamp(38px, 5.5vw, 60px); margin: 12px 0 6px; }
+.hero-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 16px; }
+.hero-meta .chip b { color: var(--text); }
+.hero-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 22px; position: relative; z-index: 1; }
+
+.week-nav { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 12px; margin-bottom: 8px; scrollbar-width: none; }
+.week-nav::-webkit-scrollbar { display: none; }
+.week-nav a { flex: none; font-size: 13px; font-weight: 700; padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--text-2); transition: transform .3s var(--spring), border-color .2s, color .2s; }
+.week-nav a:hover { transform: translateY(-2px); border-color: var(--c); color: var(--text); }
+.week-nav a.now { background: var(--c); border-color: var(--c); color: #0b0d12; }
+
+.weeks { display: grid; gap: 16px; }
+.week { padding: 0; overflow: hidden; scroll-margin-top: 80px; }
+.week.current { border-color: color-mix(in srgb, var(--c) 55%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 12%, transparent), var(--shadow-lg); }
+.week-head { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
+.wk-num { font-family: var(--display); font-size: 26px; line-height: 1; }
+.now-badge { margin-left: auto; font-size: 12px; font-weight: 800; padding: 4px 11px; border-radius: 999px; color: #0b0d12;
+  background: var(--c); animation: pop .7s var(--spring) both calc(.5s + var(--intro-delay)); }
+.acts { list-style: none; margin: 0; padding: 6px 12px; }
+.act { display: grid; grid-template-columns: 42px 1fr; gap: 14px; padding: 12px 8px; border-radius: 14px; transition: background .25s; }
+.act:hover { background: var(--surface-2); }
+.act + .act { border-top: 1px solid var(--line); }
+.act-ico { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center;
+  color: var(--tc); background: color-mix(in srgb, var(--tc) 14%, transparent); transition: transform .5s var(--spring); }
+.act:hover .act-ico { transform: scale(1.1) rotate(-6deg); }
+.act-name { font-weight: 800; display: inline-flex; align-items: center; gap: 6px; }
+a.act-name:hover { color: var(--accent); }
+.act-name .ico { width: 14px; height: 14px; color: var(--muted); }
+.act-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.kind { font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--tc); }
+.meta { font-size: 13px; color: var(--muted); margin-top: 3px; }
+.files { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.file { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--surface); transition: border-color .2s, transform .3s var(--ease); }
+.file:hover { border-color: var(--line-strong); transform: translateX(3px); }
+.file a.fname { flex: 1; min-width: 0; font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file .ext { width: 40px; padding: 6px 0; }
+@media (max-width: 640px) {
+  .course-hero { padding: 22px; }
+  .act { grid-template-columns: 36px 1fr; gap: 10px; }
+  .act-ico { width: 36px; height: 36px; }
+  .file .size { display: none; }
+}
 {% endblock %}
 {% block content %}
-<h1>{{ course.name }}</h1>
-<p class="muted" style="margin-top: -8px">
-  {{ course.code or "" }}{% if course.professor %} · {{ course.professor }}{% endif %} ·
-  <a href="{{ eclass_url }}/course/view.php?id={{ course.id }}" target="_blank" rel="noopener">eClass'da ochish</a> ·
-  <a href="{{ url_for('ask_page', course=course.id) }}">Shu kursdan so'ra</a>
-</p>
+<section class="card course-hero reveal" style="--c: {{ course_color(course.id) }}">
+  <a class="back" href="{{ url_for('index') }}"><svg class="ico"><use href="#i-back"/></svg>Bosh sahifa</a>
+  <div style="margin-top: 16px"><span class="eyebrow">{{ course.code or "" }}</span></div>
+  <h1 class="display">{{ course.name }}</h1>
+  <p class="muted">{{ course.professor or "" }}</p>
+  <div class="hero-meta">
+    <span class="chip"><svg class="ico" style="width: 15px; height: 15px"><use href="#i-file"/></svg><b class="num" data-count="{{ course.n_files }}">{{ course.n_files }}</b> material</span>
+    <span class="chip"><svg class="ico" style="width: 15px; height: 15px"><use href="#i-sparkles"/></svg><b class="num" data-count="{{ course.n_study }}">{{ course.n_study }}</b> o'quv to'plami</span>
+    <span class="chip"><svg class="ico" style="width: 15px; height: 15px"><use href="#i-task"/></svg><b class="num" data-count="{{ course.n_assign }}">{{ course.n_assign }}</b> topshiriq</span>
+  </div>
+  <div class="hero-actions">
+    <a class="btn accent" href="{{ url_for('ask_page', course=course.id) }}"><svg class="ico"><use href="#i-sparkles"/></svg>Shu kursdan so'ra</a>
+    <a class="btn" href="{{ eclass_url }}/course/view.php?id={{ course.id }}" target="_blank" rel="noopener">eClass'da ochish<svg class="ico"><use href="#i-external"/></svg></a>
+  </div>
+</section>
 
-{% for sec, acts in weeks %}
-<section class="card week">
-  <h2>{{ sec.name or ("Bo'lim " ~ sec.number) }}</h2>
-  <ul class="list">
+<nav class="week-nav reveal" style="--c: {{ course_color(course.id) }}">
+  {% for sec, info, acts in weeks %}
+  <a href="#w{{ sec.number }}" class="{{ 'now' if info.current }}">{{ info.title }}</a>
+  {% endfor %}
+</nav>
+
+<div class="weeks" style="--c: {{ course_color(course.id) }}">
+{% for sec, info, acts in weeks %}
+<section class="card week reveal {{ 'current' if info.current }}" id="w{{ sec.number }}">
+  <header class="week-head">
+    <span class="wk-num">{{ info.title }}</span>
+    {% if info.range %}<span class="muted small">{{ info.range }}</span>{% endif %}
+    {% if info.current %}<span class="now-badge">Joriy hafta</span>{% endif %}
+  </header>
+  <ul class="acts">
     {% for a in acts %}
-    <li class="act">
-      <span class="kind">{{ {"ubfile": "fayl", "folder": "papka", "url": "video", "assign": "topshiriq",
-                              "ubboard": "doska"}.get(a.type, a.type) }}</span>
-      <div style="flex: 1">
-        {% if a.type == "url" %}
-          <a href="{{ a.url }}" target="_blank" rel="noopener">{{ a.name }}</a>
-        {% elif a.type == "ubboard" %}
-          <a href="{{ eclass_url }}/mod/ubboard/view.php?id={{ a.id }}" target="_blank" rel="noopener">{{ a.name }}</a>
-        {% elif a.type == "assign" %}
-          {% set d = assigns.get(a.id) %}
-          <div class="row">
-            <a href="{{ eclass_url }}/mod/assign/view.php?id={{ a.id }}" target="_blank" rel="noopener">{{ a.name }}</a>
+    {% set t = TYPE.get(a.type, ("i-file", a.type, "#94a3b8")) %}
+    <li class="act" style="--tc: {{ t[2] }}">
+      <span class="act-ico"><svg class="ico lg"><use href="#{{ t[0] }}"/></svg></span>
+      <div style="min-width: 0">
+        <span class="kind">{{ t[1] }}</span>
+        <div class="act-top">
+          {% if a.type == "url" %}
+            <a class="act-name" href="{{ a.url }}" target="_blank" rel="noopener">{{ a.name }}<svg class="ico"><use href="#i-external"/></svg></a>
+          {% elif a.type == "ubboard" %}
+            <a class="act-name" href="{{ eclass_url }}/mod/ubboard/view.php?id={{ a.id }}" target="_blank" rel="noopener">{{ a.name }}<svg class="ico"><use href="#i-external"/></svg></a>
+          {% elif a.type == "assign" %}
+            <a class="act-name" href="{{ eclass_url }}/mod/assign/view.php?id={{ a.id }}" target="_blank" rel="noopener">{{ a.name }}<svg class="ico"><use href="#i-external"/></svg></a>
+            {% set d = assigns.get(a.id) %}
             {% if d %}<span class="badge b-{{ d.state }}">{{ LABELS[d.state] }}</span>{% endif %}
-          </div>
+          {% else %}
+            <span class="act-name">{{ a.name }}</span>
+          {% endif %}
+        </div>
+        {% if a.type == "assign" %}
+          {% set d = assigns.get(a.id) %}
           {% if d %}
-          <div class="muted small">
-            {% if d.due %}Muddat: {{ d.due | dt }}{% if d.left %} ({{ d.left }} qoldi){% endif %}{% endif %}
-            {% if d.grade %} · Baho: <strong>{{ d.grade }}</strong>{% endif %}
+          <div class="meta">
+            {% if d.due %}Muddat: {{ d.due | dt }}{% if d.left %} · <b style="color: var(--text)">{{ d.left }} qoldi</b>{% endif %}{% else %}Muddat ko'rsatilmagan{% endif %}
+            {% if d.grade %} · Baho: <b style="color: var(--text)">{{ d.grade }}</b>{% endif %}
           </div>
           {% endif %}
-        {% else %}
-          <strong>{{ a.name }}</strong>
         {% endif %}
         {% if files.get(a.id) %}
         <ul class="files">
           {% for f in files[a.id] %}
-          <li>
-            <a href="{{ url_for('file_view', file_id=f.id) }}" target="_blank">{{ f.filename }}</a>
-            <span class="muted small">{{ f.size | size }}</span>
-            {% if f.has_study %} <a class="pill" href="{{ url_for('study_page', file_id=f.id) }}">o'rganish</a>{% endif %}
+          <li class="file">
+            <span class="ext ext-{{ f.filename | ext }}">{{ f.filename | ext }}</span>
+            <a class="fname" href="{{ url_for('file_view', file_id=f.id) }}" target="_blank" title="{{ f.filename }}">{{ f.filename }}</a>
+            <span class="muted small size">{{ f.size | size }}</span>
+            {% if f.has_study %}<a class="study-chip" href="{{ url_for('study_page', file_id=f.id) }}"><svg class="ico"><use href="#i-sparkles"/></svg>O'rganish</a>{% endif %}
           </li>
           {% endfor %}
         </ul>
@@ -62,4 +137,5 @@
   </ul>
 </section>
 {% endfor %}
+</div>
 {% endblock %}

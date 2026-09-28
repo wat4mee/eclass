@@ -1,68 +1,232 @@
 {% extends "base.html" %}
 {% set LABELS = {"overdue": "Muddati o'tgan", "soon": "Yaqin", "upcoming": "Kutilmoqda",
                  "nodate": "Muddatsiz", "done": "Topshirilgan"} %}
+{% set STATE_COLOR = {"overdue": "var(--bad)", "soon": "var(--warn)", "upcoming": "var(--accent-2)",
+                      "nodate": "var(--idle)", "done": "var(--ok)"} %}
+{% set C = 376.99 %}
+{% block style %}
+.hero { display: grid; grid-template-columns: 1.15fr 1fr; gap: 28px; align-items: center; margin: 8px 0 26px; }
+.hero-text .display { margin: 10px 0 14px; }
+.lead { font-size: 17px; color: var(--text-2); max-width: 46ch; }
+.lead b { color: var(--text); }
+.hero-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 22px; }
+
+.next { display: flex; gap: 22px; align-items: center; padding: 24px; overflow: hidden; }
+.next::after { content: ""; position: absolute; right: -80px; top: -80px; width: 240px; height: 240px; border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--rc) 22%, transparent), transparent 70%); pointer-events: none; }
+.ring-wrap { position: relative; width: 140px; height: 140px; flex: none; border-radius: 50%;
+  box-shadow: 0 0 46px -14px var(--rc); }
+.ring { width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring circle { fill: none; stroke-width: 10; }
+.ring-bg { stroke: var(--surface-3); }
+.ring-val { stroke: var(--rc); stroke-linecap: round; stroke-dasharray: {{ C }}; stroke-dashoffset: var(--off);
+  animation: ring-fill 1.8s var(--ease) both calc(.35s + var(--intro-delay)); }
+@keyframes ring-fill { from { stroke-dashoffset: {{ C }}; } }
+.ring-center { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; line-height: 1; }
+.ring-num { font-size: 50px; animation: pop .9s var(--spring) both calc(.6s + var(--intro-delay)); }
+.next-body { display: grid; gap: 8px; min-width: 0; }
+.next-body .eyebrow { display: flex; align-items: center; gap: 6px; color: var(--rc); }
+.next-body .eyebrow .ico { width: 15px; height: 15px; }
+.next-body h2 { font-size: 22px; font-weight: 800; line-height: 1.2; }
+.countdown { display: flex; align-items: baseline; gap: 3px; font-size: 22px; margin-top: 2px; }
+.countdown b { font-weight: 800; }
+.countdown i { font-style: normal; color: var(--muted); font-size: 14px; margin-right: 6px; }
+.countdown i:not(:first-of-type) { margin: 0 1px; }
+
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+.stat { display: flex; align-items: center; gap: 14px; padding: 16px 18px; }
+.stat-ico { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; flex: none;
+  color: var(--sc); background: color-mix(in srgb, var(--sc) 14%, transparent); }
+.stat-num { font-size: 28px; font-weight: 800; line-height: 1; letter-spacing: -.03em; }
+.stat-label { font-size: 13px; color: var(--muted); font-weight: 600; margin-top: 4px; }
+
+.grid-3 { display: grid; gap: 18px; grid-template-columns: 1.15fr 1fr 1fr; align-items: start; }
+.timeline { list-style: none; margin: 0; padding: 0 0 0 4px; position: relative; }
+.timeline::before { content: ""; position: absolute; left: 8px; top: 8px; bottom: 8px; width: 2px;
+  background: linear-gradient(var(--line-strong), transparent); }
+.timeline li { position: relative; display: grid; grid-template-columns: 20px 1fr auto; gap: 10px; padding: 10px 0; align-items: start; }
+.t-dot { width: 10px; height: 10px; border-radius: 50%; margin: 6px 0 0 4px; background: var(--tc);
+  box-shadow: 0 0 0 4px var(--surface), 0 0 0 5px color-mix(in srgb, var(--tc) 40%, transparent); }
+.t-soon .t-dot, .t-overdue .t-dot { animation: pulse 2s infinite; --pc: var(--tc); }
+.timeline a { font-weight: 700; }
+.timeline a:hover { color: var(--accent); }
+.meta { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+
+.grade { padding: 10px 0; }
+.grade + .grade { border-top: 1px dashed var(--line); }
+.grade-top { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 7px; }
+.grade-top b { font-size: 18px; font-weight: 800; }
+.grade-name { font-weight: 700; line-height: 1.3; }
+
+.mat { display: flex; gap: 12px; align-items: center; padding: 9px 0; }
+.mat + .mat { border-top: 1px solid var(--line); }
+.mat-body { min-width: 0; flex: 1; }
+.mat-body a { font-weight: 700; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color .2s; }
+.mat-body a:hover { color: var(--accent); }
+
+.courses { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(255px, 1fr)); }
+.course-card { display: flex; flex-direction: column; gap: 6px; padding: 20px; overflow: hidden; }
+.course-card .stripe { position: absolute; inset: 0 0 auto; height: 4px; background: linear-gradient(90deg, var(--c), transparent); }
+.cc-icon { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; margin-bottom: 8px;
+  color: var(--c); background: color-mix(in srgb, var(--c) 15%, transparent); transition: transform .6s var(--spring); }
+.course-card:hover .cc-icon { transform: rotate(-8deg) scale(1.1); }
+.course-card h3 { font-size: 17px; font-weight: 800; line-height: 1.25; }
+.cc-stats { display: flex; gap: 14px; font-size: 13px; color: var(--muted); margin: 10px 0 8px; }
+.cc-stats b { color: var(--text); font-weight: 800; }
+.cc-go { position: absolute; right: 18px; top: 22px; color: var(--muted); transition: transform .4s var(--spring), color .2s; }
+.course-card:hover .cc-go { transform: translateX(4px); color: var(--c); }
+
+@media (max-width: 1000px) {
+  .hero { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .grid-3 { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 640px) {
+  .grid-3 { grid-template-columns: 1fr; }
+  .next { flex-direction: column; align-items: flex-start; }
+  .ring-wrap { width: 118px; height: 118px; }
+  .ring-num { font-size: 42px; }
+  .stat { padding: 14px; gap: 10px; }
+  .stat-ico { width: 38px; height: 38px; }
+  .stat-num { font-size: 24px; }
+}
+{% endblock %}
 {% block content %}
-<h1>Bosh sahifa</h1>
-<div class="grid">
-  <section class="card">
-    <h2>Topshiriqlar <span class="muted small">— topshirilmaganlar</span></h2>
+<section class="hero">
+  <div class="hero-text reveal">
+    <span class="eyebrow">{{ today }}</span>
+    <h1 class="display">{{ greeting }},<br><em>o'qishga tayyormisiz?</em></h1>
+    <p class="lead">
+      {% if stats.pending %}<b>{{ stats.pending }} ta</b> topshiriq kutmoqda{% else %}Barcha topshiriqlar topshirilgan{% endif %}
+      · <b>{{ stats.packs }} ta</b> o'quv to'plami tayyor.
+    </p>
+    <div class="hero-actions">
+      <a class="btn accent" href="{{ url_for('ask_page') }}"><svg class="ico"><use href="#i-sparkles"/></svg>Kursdan so'ra</a>
+      <a class="btn" href="{{ url_for('grades') }}"><svg class="ico"><use href="#i-award"/></svg>Baholar</a>
+    </div>
+  </div>
+
+  {% if next_due %}
+  {% set d = next_due %}
+  <a class="card lift next reveal" href="{{ eclass_url }}/mod/assign/view.php?id={{ d.activity_id }}" target="_blank" rel="noopener"
+     style="--c: {{ course_color(d.course_id) }}; --rc: {{ STATE_COLOR[d.state] }}">
+    <div class="ring-wrap">
+      <svg class="ring" viewBox="0 0 140 140" aria-hidden="true">
+        <circle class="ring-bg" cx="70" cy="70" r="60"/>
+        <circle class="ring-val" cx="70" cy="70" r="60" style="--off: {{ '%.2f' % (C * (1 - d.ring)) }}"/>
+      </svg>
+      <div class="ring-center">
+        {% if d.days_left %}<span class="ring-num serif">{{ d.days_left }}</span><span class="eyebrow">kun</span>
+        {% else %}<span class="ring-num serif">{{ d.hours_left }}</span><span class="eyebrow">soat</span>{% endif %}
+      </div>
+    </div>
+    <div class="next-body">
+      <span class="eyebrow"><svg class="ico"><use href="#i-clock"/></svg>Keyingi muddat</span>
+      <h2>{{ d.name }}</h2>
+      <span class="chip" style="justify-self: start"><span class="dot"></span>{{ d.course }}</span>
+      <div class="countdown num" data-due="{{ d.due_iso }}"></div>
+      <span class="muted small">{{ d.due | dt }} gacha</span>
+    </div>
+  </a>
+  {% else %}
+  <div class="card next reveal" style="--rc: var(--ok)">
+    <div class="empty-state" style="width: 100%">
+      <svg class="ico"><use href="#i-check"/></svg>
+      <strong style="color: var(--text); font-size: 18px">Yaqin muddatlar yo'q</strong>
+      <span>Yangi topshiriq chiqsa, shu yerda sanoq boshlanadi.</span>
+    </div>
+  </div>
+  {% endif %}
+</section>
+
+<section class="stats">
+  <div class="card stat reveal" style="--sc: var(--warn)">
+    <span class="stat-ico"><svg class="ico lg"><use href="#i-task"/></svg></span>
+    <div><div class="stat-num num" data-count="{{ stats.pending }}">{{ stats.pending }}</div><div class="stat-label">Topshirilmagan</div></div>
+  </div>
+  <div class="card stat reveal" style="--sc: var(--ok)">
+    <span class="stat-ico"><svg class="ico lg"><use href="#i-award"/></svg></span>
+    <div>
+      {% if stats.avg is not none %}<div class="stat-num num" data-count="{{ stats.avg }}" data-suffix="%">{{ stats.avg }}%</div>
+      {% else %}<div class="stat-num">—</div>{% endif %}
+      <div class="stat-label">O'rtacha baho</div>
+    </div>
+  </div>
+  <div class="card stat reveal" style="--sc: var(--info)">
+    <span class="stat-ico"><svg class="ico lg"><use href="#i-file"/></svg></span>
+    <div><div class="stat-num num" data-count="{{ stats.materials }}">{{ stats.materials }}</div><div class="stat-label">Materiallar</div></div>
+  </div>
+  <div class="card stat reveal" style="--sc: var(--accent)">
+    <span class="stat-ico"><svg class="ico lg"><use href="#i-sparkles"/></svg></span>
+    <div><div class="stat-num num" data-count="{{ stats.packs }}">{{ stats.packs }}</div><div class="stat-label">O'quv to'plamlari</div></div>
+  </div>
+</section>
+
+<div class="grid-3">
+  <section class="card reveal">
+    <div class="card-title"><h2><svg class="ico"><use href="#i-task"/></svg>Topshiriqlar</h2><span class="muted small">topshirilmaganlar</span></div>
     {% if pending %}
-    <ul class="list">
+    <ol class="timeline">
       {% for d in pending %}
-      <li>
-        <div class="row">
+      <li class="t-{{ d.state }}" style="--tc: {{ STATE_COLOR[d.state] }}; --c: {{ course_color(d.course_id) }}">
+        <span class="t-dot"></span>
+        <div>
           <a href="{{ eclass_url }}/mod/assign/view.php?id={{ d.activity_id }}" target="_blank" rel="noopener">{{ d.name }}</a>
-          <span class="badge b-{{ d.state }}">{{ LABELS[d.state] }}</span>
+          <div class="meta"><span class="dot"></span>{{ d.course }}{% if d.due %} · {{ d.due | dt }}{% endif %}{% if d.left %} · <b style="color: var(--text)">{{ d.left }}</b>{% endif %}</div>
         </div>
-        <div class="muted small">
-          {{ d.course }} · {% if d.due %}{{ d.due | dt }}{% if d.left %} · {{ d.left }} qoldi{% endif %}{% else %}muddat ko'rsatilmagan{% endif %}
-        </div>
+        <span class="badge b-{{ d.state }}">{{ LABELS[d.state] }}</span>
       </li>
       {% endfor %}
-    </ul>
-    {% else %}<p class="muted">Hammasi topshirilgan.</p>{% endif %}
+    </ol>
+    {% else %}
+    <div class="empty-state"><svg class="ico"><use href="#i-check"/></svg>Hammasi topshirilgan</div>
+    {% endif %}
   </section>
 
-  <section class="card">
-    <h2>Baholar</h2>
-    {% if graded %}
-    <ul class="list">
-      {% for d in graded %}
-      <li>
-        <div class="row"><span>{{ d.name }}</span><strong>{{ d.grade }}</strong></div>
-        <div class="muted small">{{ d.course }}</div>
-        {% if d.pct is not none %}<div class="meter"><span style="width: {{ d.pct }}%"></span></div>{% endif %}
-      </li>
-      {% endfor %}
-    </ul>
-    <p class="small"><a href="{{ url_for('grades') }}">Barcha topshiriqlar →</a></p>
-    {% else %}<p class="muted">Hali baho yo'q.</p>{% endif %}
+  <section class="card reveal">
+    <div class="card-title"><h2><svg class="ico"><use href="#i-award"/></svg>Baholar</h2><a class="back" href="{{ url_for('grades') }}">Hammasi<svg class="ico"><use href="#i-arrow"/></svg></a></div>
+    {% for d in graded %}
+    <div class="grade" style="--c: {{ course_color(d.course_id) }}; --i: {{ loop.index }}">
+      <div class="grade-top"><span class="grade-name">{{ d.name }}</span><b class="num">{{ d.pct }}%</b></div>
+      <div class="bar-track"><span style="--w: {{ d.pct or 0 }}%"></span></div>
+      <div class="meta" style="margin-top: 6px"><span class="dot"></span>{{ d.course }} · {{ d.grade }}</div>
+    </div>
+    {% else %}
+    <div class="empty-state"><svg class="ico"><use href="#i-clock"/></svg>Hali baho qo'yilmagan</div>
+    {% endfor %}
   </section>
 
-  <section class="card">
-    <h2>Yangi materiallar</h2>
-    <ul class="list">
-      {% for m in materials %}
-      <li>
-        <div class="row">
-          <a href="{{ url_for('file_view', file_id=m.id) }}" target="_blank">{{ m.activity }}</a>
-          {% if m.has_study %}<a class="pill" href="{{ url_for('study_page', file_id=m.id) }}">o'rganish</a>{% endif %}
-        </div>
-        <div class="muted small">{{ m.course }} · {{ m.filename }}</div>
-      </li>
-      {% endfor %}
-    </ul>
+  <section class="card reveal">
+    <div class="card-title"><h2><svg class="ico"><use href="#i-file"/></svg>Yangi materiallar</h2></div>
+    {% for m in materials %}
+    <div class="mat" style="--c: {{ course_color(m.course_id) }}">
+      <span class="ext ext-{{ m.filename | ext }}">{{ m.filename | ext }}</span>
+      <div class="mat-body">
+        <a href="{{ url_for('file_view', file_id=m.id) }}" target="_blank" title="{{ m.filename }}">{{ m.activity }}</a>
+        <div class="meta"><span class="dot"></span>{{ m.course }}</div>
+      </div>
+      {% if m.has_study %}<a class="study-chip" href="{{ url_for('study_page', file_id=m.id) }}"><svg class="ico"><use href="#i-sparkles"/></svg>O'rganish</a>{% endif %}
+    </div>
+    {% endfor %}
   </section>
 </div>
 
-<h2 style="margin-top: 24px">Kurslar</h2>
-<div class="grid">
+<div class="section-head reveal"><h2>Kurslar</h2><span class="muted small">{{ course_list | length }} ta kurs</span></div>
+<section class="courses">
   {% for c in course_list %}
-  <a class="card" href="{{ url_for('course', course_id=c.id) }}" style="color: inherit; text-decoration: none">
-    <strong>{{ c.name }}</strong>
-    <div class="muted small">{{ c.professor or "" }}</div>
-    <div class="small" style="margin-top: 6px">{{ c.n_files }} ta material · {{ c.n_assign }} ta topshiriq</div>
+  <a class="card lift course-card reveal" href="{{ url_for('course', course_id=c.id) }}" style="--c: {{ course_color(c.id) }}">
+    <span class="stripe"></span>
+    <svg class="ico cc-go"><use href="#i-arrow"/></svg>
+    <span class="cc-icon"><svg class="ico lg"><use href="#i-book"/></svg></span>
+    <h3>{{ c.name }}</h3>
+    <span class="muted small">{{ c.professor or "" }}</span>
+    <div class="cc-stats">
+      <span><b class="num">{{ c.n_files }}</b> material</span>
+      <span><b class="num">{{ c.n_study }}</b> to'plam</span>
+      <span><b class="num">{{ c.n_assign }}</b> topshiriq</span>
+    </div>
+    <div class="bar-track" title="O'quv to'plami tayyor materiallar"><span style="--w: {{ (100 * c.n_study / c.n_files) | round | int if c.n_files else 0 }}%"></span></div>
   </a>
   {% endfor %}
-</div>
+</section>
 {% endblock %}

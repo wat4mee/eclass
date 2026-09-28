@@ -1,100 +1,356 @@
 {% extends "base.html" %}
+{% set C = 339.29 %}
 {% block title %}{{ s.activity }} · o'rganish{% endblock %}
 {% block style %}
-.two { display: grid; gap: 16px; grid-template-columns: 3fr 2fr; align-items: start; }
-@media (max-width: 800px) { .two { grid-template-columns: 1fr; } }
-.summary p { margin: 0 0 10px; }
-dl.concepts { margin: 0; }
-dl.concepts dt { font-weight: 600; margin-top: 10px; }
-dl.concepts dd { margin: 2px 0 0; color: var(--muted); }
-.cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
-.flash { min-height: 130px; cursor: pointer; display: flex; flex-direction: column; justify-content: center;
-  text-align: center; user-select: none; transition: background .15s; }
-.flash .back { display: none; }
-.flash.flipped { background: var(--accent-soft); }
-.flash.flipped .front { display: none; }
-.flash.flipped .back { display: block; }
-.flash .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
-.q { margin-bottom: 16px; }
-.q label { display: block; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; margin: 6px 0; cursor: pointer; }
-.q label.right { border-color: var(--ok); background: var(--ok-soft); }
-.q label.wrong { border-color: var(--bad); background: var(--bad-soft); }
-.q .why { display: none; font-size: 14px; color: var(--muted); margin-top: 6px; }
-.checked .why { display: block; }
-#score { font-weight: 600; margin-left: 10px; }
+.study-hero { margin: 4px 0 24px; }
+.study-hero .display { font-size: clamp(38px, 5.5vw, 58px); margin: 12px 0 12px; }
+.hero-meta { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.seg-wrap { display: flex; justify-content: center; margin-bottom: 22px; position: sticky; top: 70px; z-index: 10; }
+.segs { position: relative; display: inline-flex; gap: 2px; padding: 5px; border-radius: 999px; background: color-mix(in srgb, var(--surface) 80%, transparent);
+  border: 1px solid var(--line); box-shadow: var(--shadow); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+.seg-ind { position: absolute; top: 5px; bottom: 5px; left: 0; width: 0; border-radius: 999px; background: var(--text);
+  transition: transform .55s var(--spring), width .55s var(--spring); }
+.seg { position: relative; z-index: 1; border: 0; background: none; cursor: pointer; padding: 9px 20px; border-radius: 999px;
+  font-weight: 800; font-size: 14px; color: var(--muted); display: inline-flex; align-items: center; gap: 8px; transition: color .3s; }
+.seg.on { color: var(--bg); }
+.seg .ico { width: 16px; height: 16px; }
+.cnt { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, currentColor 18%, transparent); }
+.panel { display: none; }
+.panel.on { display: block; animation: rise .6s var(--ease) both; }
+
+.two { display: grid; gap: 18px; grid-template-columns: 1.4fr 1fr; align-items: start; }
+.summary { padding: 28px; }
+.summary p { font-size: 16.5px; line-height: 1.75; color: var(--text-2); margin: 0 0 14px; }
+.summary p:first-of-type::first-letter { font-family: var(--display); font-size: 3.4em; float: left; line-height: .8;
+  margin: 6px 10px 0 0; color: var(--accent); }
+.concepts { display: grid; gap: 10px; }
+.concept { padding: 14px 16px; }
+.concept b { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.concept b::before { content: ""; width: 8px; height: 8px; border-radius: 3px; flex: none;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)); transform: rotate(45deg); }
+.concept p { color: var(--muted); font-size: 14px; margin-top: 5px; line-height: 1.55; }
+
+.deck { max-width: 640px; margin: 0 auto; outline: none; }
+.deck-stage { position: relative; height: 320px; perspective: 1400px; touch-action: pan-y; }
+.deck-stage::before, .deck-stage::after { content: ""; position: absolute; inset: 0; border-radius: 26px; border: 1px solid var(--line);
+  background: var(--surface); box-shadow: var(--shadow); }
+.deck-stage::before { transform: translateY(26px) scale(.9); opacity: .45; }
+.deck-stage::after { transform: translateY(13px) scale(.95); opacity: .75; }
+.fcard { position: absolute; inset: 0; z-index: 2; display: none; border: 0; padding: 0; margin: 0; background: none;
+  color: inherit; font: inherit; text-align: center; cursor: pointer; }
+.fcard.active { display: block; animation: card-in .6s var(--ease) both; }
+.fcard.from-left.active { animation-name: card-in-left; }
+@keyframes card-in { from { opacity: 0; transform: translateX(70px) rotate(4deg) scale(.95); } }
+@keyframes card-in-left { from { opacity: 0; transform: translateX(-70px) rotate(-4deg) scale(.95); } }
+.fcard-inner { position: relative; display: block; width: 100%; height: 100%; transform-style: preserve-3d;
+  transition: transform .8s var(--spring); }
+.fcard.flipped .fcard-inner { transform: rotateY(180deg); }
+.face { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+  padding: 34px; border-radius: 26px; border: 1px solid var(--line); box-shadow: var(--shadow-lg);
+  -webkit-backface-visibility: hidden; backface-visibility: hidden; }
+.face-front { background: var(--surface); }
+.face-back { transform: rotateY(180deg); border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: linear-gradient(140deg, color-mix(in srgb, var(--accent) 18%, var(--surface)), color-mix(in srgb, var(--accent-2) 18%, var(--surface))); }
+.fc-text { font-size: 22px; font-weight: 700; line-height: 1.4; max-width: 32ch; }
+.face-back .fc-text { font-size: 18px; font-weight: 600; }
+.hint { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.hint .ico { width: 15px; height: 15px; }
+.deck-controls { display: flex; align-items: center; justify-content: center; gap: 18px; margin-top: 30px; }
+.deck-count { font-size: 15px; color: var(--muted); min-width: 60px; text-align: center; }
+.deck-count b { color: var(--text); font-size: 20px; }
+.progress { height: 5px; border-radius: 99px; background: var(--surface-3); overflow: hidden; margin-top: 16px; }
+.progress span { display: block; height: 100%; width: 0; border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .5s var(--ease); }
+.keys { text-align: center; margin-top: 14px; font-size: 12.5px; color: var(--muted); }
+kbd { font: 700 11px var(--font); padding: 2px 7px; border-radius: 6px; border: 1px solid var(--line-strong); background: var(--surface-2); }
+
+.quiz { max-width: 720px; margin: 0 auto; padding: 28px; }
+.quiz-top { display: flex; justify-content: space-between; align-items: center; }
+.qcard { display: none; margin-top: 22px; }
+.qcard.active { display: block; animation: card-in .55s var(--ease) both; }
+.q-text { font-size: 21px; font-weight: 800; line-height: 1.4; margin-bottom: 18px; }
+.options { display: grid; gap: 10px; }
+.opt { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; padding: 14px 16px; border-radius: 16px;
+  border: 1.5px solid var(--line-strong); background: var(--surface); color: var(--text); cursor: pointer; font-weight: 600;
+  transition: transform .3s var(--spring), border-color .2s, background .25s; }
+.opt:hover:not(:disabled) { transform: translateX(4px); border-color: var(--accent); }
+.opt:disabled { cursor: default; }
+.key { width: 30px; height: 30px; flex: none; display: grid; place-items: center; border-radius: 10px; font-weight: 800; font-size: 13px;
+  background: var(--surface-2); border: 1px solid var(--line); transition: background .25s, color .25s; }
+.opt-text { flex: 1; }
+.mark { opacity: 0; width: 22px; height: 22px; stroke-width: 2.6; }
+.opt.right { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, var(--surface)); }
+.opt.right .key { background: var(--ok); color: #fff; border-color: transparent; }
+.opt.right .mark { opacity: 1; color: var(--ok); animation: pop .5s var(--spring) both; }
+.opt.wrong { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, var(--surface)); animation: shake .45s; }
+.opt.wrong .key { background: var(--bad); color: #fff; border-color: transparent; }
+.opt.wrong .mark { opacity: 1; color: var(--bad); }
+.opt.dim { opacity: .5; }
+@keyframes shake { 20%, 60% { transform: translateX(-7px); } 40%, 80% { transform: translateX(7px); } }
+.explain { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .5s var(--ease), margin .5s var(--ease); }
+.explain > div { overflow: hidden; }
+.explain .inner { display: flex; gap: 10px; padding: 14px 16px; border-radius: 14px; color: var(--text-2); font-size: 14.5px;
+  background: color-mix(in srgb, var(--accent-2) 10%, var(--surface-2)); border: 1px solid color-mix(in srgb, var(--accent-2) 25%, transparent); }
+.explain .inner .ico { color: var(--accent-2); margin-top: 2px; }
+.qcard.answered .explain { grid-template-rows: 1fr; margin-top: 14px; }
+.q-actions { display: flex; justify-content: flex-end; margin-top: 20px; }
+.qresult { display: none; text-align: center; padding: 10px 0; }
+.qresult.on { display: grid; justify-items: center; gap: 10px; animation: rise .7s var(--ease) both; }
+.score-ring { position: relative; width: 150px; height: 150px; }
+.score-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.score-ring circle { fill: none; stroke-width: 11; }
+.score-ring .bg { stroke: var(--surface-3); }
+.score-ring .val { stroke: url(#score-grad); stroke-linecap: round; stroke-dasharray: {{ C }}; stroke-dashoffset: {{ C }};
+  transition: stroke-dashoffset 1.6s var(--ease); }
+.score-num { position: absolute; inset: 0; display: grid; place-content: center; font-family: var(--display); font-size: 52px; line-height: 1; }
+.score-num small { font-size: 22px; color: var(--muted); }
+.result-msg { font-size: 20px; font-weight: 800; }
+.confetti { position: fixed; top: 42vh; width: 9px; height: 15px; border-radius: 3px; z-index: 100; pointer-events: none; }
+
+@media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
+@media (max-width: 560px) {
+  .seg { padding: 8px 13px; }
+  .deck-stage { height: 360px; }
+  .fc-text { font-size: 19px; }
+  .quiz, .summary { padding: 20px; }
+}
 {% endblock %}
 {% block content %}
-<p class="small"><a href="{{ url_for('course', course_id=s.course_id) }}">← {{ s.course }}</a></p>
-<h1>{{ s.activity }}</h1>
-<p class="muted" style="margin-top: -8px">
-  <a href="{{ url_for('file_view', file_id=s.file_id) }}" target="_blank">{{ s.filename }}</a> ·
-  {{ s.model }}
-</p>
-
-<div class="two">
-  <section class="card summary" id="summary">
-    <h2>Qisqa mazmun</h2>
-    {% for para in s.summary.split("\n") if para.strip() %}<p>{{ para }}</p>{% endfor %}
-  </section>
-  <section class="card">
-    <h2>Asosiy tushunchalar</h2>
-    <dl class="concepts">
-      {% for c in concepts %}<dt>{{ c.term }}</dt><dd>{{ c.explanation }}</dd>{% endfor %}
-    </dl>
-  </section>
-</div>
-
-<h2 style="margin-top: 24px">Flashcard'lar <span class="muted small">— bosib aylantiring</span></h2>
-<div class="cards">
-  {% for c in flashcards %}
-  <div class="card flash" onclick="this.classList.toggle('flipped')">
-    <div class="front">{{ c.front }}<div class="hint">javobni ko'rish</div></div>
-    <div class="back">{{ c.back }}</div>
+<section class="study-hero reveal" style="--c: {{ course_color(s.course_id) }}">
+  <a class="back" href="{{ url_for('course', course_id=s.course_id) }}"><svg class="ico"><use href="#i-back"/></svg>{{ s.course }}</a>
+  <h1 class="display">{{ s.activity }}</h1>
+  <div class="hero-meta">
+    <a class="chip" href="{{ url_for('file_view', file_id=s.file_id) }}" target="_blank"><span class="ext ext-{{ s.filename | ext }}" style="width: auto; padding: 3px 6px">{{ s.filename | ext }}</span>{{ s.filename }}</a>
+    <span class="chip"><svg class="ico" style="width: 14px; height: 14px"><use href="#i-sparkles"/></svg>{{ s.model }}</span>
   </div>
-  {% endfor %}
+</section>
+
+<div class="seg-wrap reveal">
+  <div class="segs" role="tablist">
+    <span class="seg-ind"></span>
+    <button class="seg on" type="button" data-tab="summary"><svg class="ico"><use href="#i-book"/></svg>Mazmun</button>
+    <button class="seg" type="button" data-tab="cards"><svg class="ico"><use href="#i-layers"/></svg>Kartalar<span class="cnt">{{ flashcards | length }}</span></button>
+    <button class="seg" type="button" data-tab="quiz"><svg class="ico"><use href="#i-target"/></svg>Test<span class="cnt">{{ quiz | length }}</span></button>
+  </div>
 </div>
 
-<h2 style="margin-top: 24px">Test</h2>
-<section class="card" id="quiz">
-  {% for q in quiz %}
-  {% set qi = loop.index0 %}
-  <div class="q" data-answer="{{ q.answer_index }}">
-    <strong>{{ loop.index }}. {{ q.question }}</strong>
-    {% for opt in q.options %}
-    <label><input type="radio" name="q{{ qi }}" value="{{ loop.index0 }}"> {{ "ABCD"[loop.index0] }}) {{ opt }}</label>
+<section class="panel on" id="p-summary">
+  <div class="two">
+    <article class="card summary reveal" id="summary">
+      <div class="card-title"><h2><svg class="ico"><use href="#i-book"/></svg>Qisqa mazmun</h2></div>
+      {% for para in s.summary.split("\n") if para.strip() %}<p>{{ para }}</p>{% endfor %}
+    </article>
+    <div class="concepts">
+      {% for c in concepts %}
+      <div class="card lift concept reveal"><b>{{ c.term }}</b><p>{{ c.explanation }}</p></div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="panel" id="p-cards">
+  <div class="deck" id="deck" tabindex="-1">
+    <div class="deck-stage" id="stage">
+      {% for c in flashcards %}
+      <button class="fcard {{ 'active' if loop.first }}" type="button" aria-label="Kartani aylantirish">
+        <span class="fcard-inner">
+          <span class="face face-front">
+            <span class="eyebrow">Savol · {{ loop.index }}</span>
+            <span class="fc-text">{{ c.front }}</span>
+            <span class="hint"><svg class="ico"><use href="#i-flip"/></svg>Javobni ko'rish uchun bosing</span>
+          </span>
+          <span class="face face-back">
+            <span class="eyebrow">Javob</span>
+            <span class="fc-text">{{ c.back }}</span>
+          </span>
+        </span>
+      </button>
+      {% endfor %}
+    </div>
+    <div class="deck-controls">
+      <button class="icon-btn" type="button" id="prev" aria-label="Oldingi"><svg class="ico"><use href="#i-left"/></svg></button>
+      <span class="deck-count num"><b id="cur">1</b> / {{ flashcards | length }}</span>
+      <button class="icon-btn" type="button" id="next" aria-label="Keyingi"><svg class="ico"><use href="#i-right"/></svg></button>
+    </div>
+    <div class="progress"><span id="deckbar"></span></div>
+    <p class="keys"><kbd>←</kbd> <kbd>→</kbd> almashtirish · <kbd>Space</kbd> aylantirish · telefonda suring</p>
+  </div>
+</section>
+
+<section class="panel" id="p-quiz">
+  <div class="card quiz" id="quiz">
+    <div class="quiz-top"><span class="eyebrow" id="qlabel">Savol 1 / {{ quiz | length }}</span><span class="chip num" id="qscore">0 to'g'ri</span></div>
+    <div class="progress"><span id="qbar"></span></div>
+    {% for q in quiz %}
+    <div class="qcard {{ 'active' if loop.first }}" data-answer="{{ q.answer_index }}">
+      <h3 class="q-text">{{ q.question }}</h3>
+      <div class="options">
+        {% for opt in q.options %}
+        <button class="opt" type="button" data-i="{{ loop.index0 }}">
+          <span class="key">{{ "ABCD"[loop.index0] }}</span><span class="opt-text">{{ opt }}</span>
+          <svg class="ico mark"><use href="#i-check"/></svg>
+        </button>
+        {% endfor %}
+      </div>
+      <div class="explain"><div><div class="inner"><svg class="ico"><use href="#i-sparkles"/></svg><span>{{ q.explanation }}</span></div></div></div>
+    </div>
     {% endfor %}
-    <div class="why">{{ q.explanation }}</div>
+    <div class="q-actions" id="qactions"><button class="btn accent" type="button" id="qnext" disabled>Keyingi savol<svg class="ico"><use href="#i-arrow"/></svg></button></div>
+    <div class="qresult" id="qresult">
+      <div class="score-ring">
+        <svg viewBox="0 0 130 130" aria-hidden="true">
+          <defs><linearGradient id="score-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbbf24"/><stop offset="1" stop-color="#2dd4bf"/></linearGradient></defs>
+          <circle class="bg" cx="65" cy="65" r="54"/><circle class="val" id="rring" cx="65" cy="65" r="54"/>
+        </svg>
+        <div class="score-num"><span><span id="rnum">0</span><small>/{{ quiz | length }}</small></span></div>
+      </div>
+      <p class="result-msg" id="rmsg"></p>
+      <button class="btn primary" type="button" id="qrestart"><svg class="ico"><use href="#i-flip"/></svg>Qaytadan</button>
+    </div>
   </div>
-  {% endfor %}
-  <button class="primary" id="check">Tekshirish</button>
-  <button id="reset">Qaytadan</button>
-  <span id="score"></span>
 </section>
 {% endblock %}
 {% block script %}
 <script>
-const quiz = document.getElementById("quiz");
-document.getElementById("check").onclick = () => {
-  let right = 0;
-  const qs = quiz.querySelectorAll(".q");
-  qs.forEach(q => {
-    const answer = Number(q.dataset.answer);
-    const picked = q.querySelector("input:checked");
-    q.querySelectorAll("label").forEach((label, i) => {
-      label.classList.toggle("right", i === answer);
-      label.classList.toggle("wrong", picked !== null && Number(picked.value) === i && i !== answer);
-    });
-    if (picked && Number(picked.value) === answer) right++;
-    q.classList.add("checked");
+(() => {
+  // ---- segmented tabs with a sliding indicator
+  const segs = [...document.querySelectorAll(".seg")], ind = document.querySelector(".seg-ind");
+  const moveInd = btn => { ind.style.width = btn.offsetWidth + "px"; ind.style.transform = `translateX(${btn.offsetLeft}px)`; };
+  const openTab = name => {
+    segs.forEach(s => s.classList.toggle("on", s.dataset.tab === name));
+    document.querySelectorAll(".panel").forEach(p => p.classList.toggle("on", p.id === "p-" + name));
+    moveInd(segs.find(s => s.dataset.tab === name));
+    history.replaceState(null, "", name === "summary" ? location.pathname : "#" + name);
+    if (name === "cards") document.getElementById("deck").focus({ preventScroll: true });
+  };
+  segs.forEach(s => s.addEventListener("click", () => openTab(s.dataset.tab)));
+  const initial = ["cards", "quiz"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "summary";
+  requestAnimationFrame(() => { ind.style.transition = "none"; openTab(initial); requestAnimationFrame(() => ind.style.transition = ""); });
+  addEventListener("resize", () => moveInd(document.querySelector(".seg.on")));
+  addEventListener("hashchange", () => {
+    const name = location.hash.slice(1);
+    if (["summary", "cards", "quiz"].includes(name)) openTab(name);
   });
-  document.getElementById("score").textContent = `${right} / ${qs.length} to'g'ri`;
-};
-document.getElementById("reset").onclick = () => {
-  quiz.querySelectorAll("input").forEach(i => (i.checked = false));
-  quiz.querySelectorAll("label").forEach(l => l.classList.remove("right", "wrong"));
-  quiz.querySelectorAll(".q").forEach(q => q.classList.remove("checked"));
-  document.getElementById("score").textContent = "";
-};
-window.addEventListener("load", () => renderMath(document.querySelector("main")));
+  if (document.fonts) document.fonts.ready.then(() => moveInd(document.querySelector(".seg.on")));
+
+  // ---- flashcard deck
+  const cards = [...document.querySelectorAll(".fcard")];
+  const cur = document.getElementById("cur"), deckbar = document.getElementById("deckbar");
+  let idx = 0, swiped = false;
+  const show = (n, dir) => {
+    if (!cards.length) return;
+    cards[idx].classList.remove("active", "flipped", "from-left");
+    idx = (n + cards.length) % cards.length;
+    const card = cards[idx];
+    card.classList.toggle("from-left", dir < 0);
+    void card.offsetWidth;  // restart the entrance animation
+    card.classList.add("active");
+    cur.textContent = idx + 1;
+    deckbar.style.width = ((idx + 1) / cards.length * 100) + "%";
+  };
+  cards.forEach(c => c.addEventListener("click", () => { if (!swiped) c.classList.toggle("flipped"); swiped = false; }));
+  document.getElementById("prev").onclick = () => show(idx - 1, -1);
+  document.getElementById("next").onclick = () => show(idx + 1, 1);
+  document.addEventListener("keydown", e => {
+    if (!document.getElementById("p-cards").classList.contains("on") || e.target.closest("input, textarea")) return;
+    if (e.key === "ArrowRight") show(idx + 1, 1);
+    else if (e.key === "ArrowLeft") show(idx - 1, -1);
+    else if (e.key === " " || e.key === "Enter") { e.preventDefault(); cards[idx].classList.toggle("flipped"); }
+  });
+  const stage = document.getElementById("stage");
+  let startX = null;
+  stage.addEventListener("pointerdown", e => { startX = e.clientX; });
+  stage.addEventListener("pointerup", e => {
+    if (startX === null) return;
+    const dx = e.clientX - startX; startX = null;
+    if (Math.abs(dx) > 50) { swiped = true; show(idx + (dx < 0 ? 1 : -1), dx < 0 ? 1 : -1); }
+  });
+  show(0, 1);
+
+  // ---- quiz, one question at a time
+  const qcards = [...document.querySelectorAll(".qcard")], total = qcards.length;
+  const qnext = document.getElementById("qnext"), qlabel = document.getElementById("qlabel");
+  const qscore = document.getElementById("qscore"), qbar = document.getElementById("qbar");
+  let q = 0, right = 0;
+  const updateTop = () => {
+    qlabel.textContent = q < total ? `Savol ${q + 1} / ${total}` : "Natija";
+    qscore.textContent = `${right} to'g'ri`;
+    qbar.style.width = (Math.min(q, total) / total * 100) + "%";
+  };
+  qcards.forEach(card => card.querySelectorAll(".opt").forEach(opt => opt.addEventListener("click", () => {
+    const answer = Number(card.dataset.answer), picked = Number(opt.dataset.i);
+    card.querySelectorAll(".opt").forEach((o, i) => {
+      o.disabled = true;
+      if (i === answer) o.classList.add("right");
+      else if (i === picked) { o.classList.add("wrong"); o.querySelector("use").setAttribute("href", "#i-x"); }
+      else o.classList.add("dim");
+    });
+    if (picked === answer) right++;
+    card.classList.add("answered");
+    qscore.textContent = `${right} to'g'ri`;
+    qnext.disabled = false;
+    qnext.focus({ preventScroll: true });
+  })));
+  qnext.addEventListener("click", () => {
+    qcards[q].classList.remove("active");
+    q++;
+    qnext.disabled = true;
+    if (q < total) { qcards[q].classList.add("active"); updateTop(); return; }
+    finish();
+  });
+  function finish() {
+    updateTop();
+    document.getElementById("qactions").style.display = "none";
+    document.getElementById("qresult").classList.add("on");
+    const ring = document.getElementById("rring"), C = {{ C }};
+    requestAnimationFrame(() => requestAnimationFrame(() => { ring.style.strokeDashoffset = C * (1 - right / total); }));
+    const num = document.getElementById("rnum");
+    let n = 0;
+    const step = () => { num.textContent = n; if (n++ < right) setTimeout(step, 1400 / Math.max(right, 1)); };
+    step();
+    document.getElementById("rmsg").textContent =
+      right === total ? "Mukammal! Hammasi to'g'ri 🎉"
+      : right >= total * .6 ? "Yaxshi natija! Yana bir urinib ko'ring."
+      : "Mazmunni yana bir ko'rib chiqing, keyin qayta urining.";
+    if (right === total) setTimeout(confetti, 700);
+  }
+  document.getElementById("qrestart").addEventListener("click", () => {
+    q = 0; right = 0;
+    qcards.forEach(card => {
+      card.classList.remove("answered", "active");
+      card.querySelectorAll(".opt").forEach(o => {
+        o.disabled = false; o.classList.remove("right", "wrong", "dim");
+        o.querySelector("use").setAttribute("href", "#i-check");
+      });
+    });
+    document.getElementById("qresult").classList.remove("on");
+    document.getElementById("rring").style.strokeDashoffset = "";
+    document.getElementById("qactions").style.display = "";
+    qcards[0].classList.add("active");
+    updateTop();
+  });
+  updateTop();
+
+  function confetti() {
+    if (REDUCED_MOTION) return;
+    const colors = ["#fbbf24", "#2dd4bf", "#f97360", "#60a5fa", "#a78bfa", "#84cc16", "#f472b6"];
+    for (let i = 0; i < 140; i++) {
+      const p = document.createElement("span");
+      p.className = "confetti";
+      p.style.left = (50 + (Math.random() - .5) * 12) + "vw";
+      p.style.background = colors[i % colors.length];
+      document.body.appendChild(p);
+      const dx = (Math.random() - .5) * innerWidth * .9, up = -(180 + Math.random() * 260), rot = (Math.random() - .5) * 1080;
+      p.animate([
+        { transform: "translate(0, 0) rotate(0deg)", opacity: 1 },
+        { transform: `translate(${dx * .6}px, ${up}px) rotate(${rot * .5}deg)`, opacity: 1, offset: .35 },
+        { transform: `translate(${dx}px, ${innerHeight * .6}px) rotate(${rot}deg)`, opacity: 0 },
+      ], { duration: 1800 + Math.random() * 1000, easing: "cubic-bezier(.2,.7,.3,1)" }).onfinish = () => p.remove();
+    }
+  }
+
+  window.addEventListener("load", () => renderMath(document.querySelector("main")));
+})();
 </script>
 {% endblock %}

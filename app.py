@@ -4,8 +4,9 @@
 """
 import argparse
 import json
+import random
 import re
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from flask import Flask, abort, g, jsonify, render_template, request, send_file
@@ -18,6 +19,16 @@ ROOT = Path(__file__).resolve().parent
 DB_PATH = ROOT / "data" / "eclass.db"
 FILES_DIR = (ROOT / "data" / "files").resolve()
 ECLASS_URL = "https://eclass.inha.ac.kr"
+
+# One stable accent per course (by id order), so a course is recognisable wherever it appears.
+COURSE_COLORS = ["#f59e0b", "#14b8a6", "#f97360", "#3b82f6", "#84cc16", "#ec4899", "#8b5cf6", "#06b6d4"]
+WEEKDAYS = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
+MONTHS = ["yanvar", "fevral", "mart", "aprel", "may", "iyun", "iyul", "avgust", "sentabr", "oktabr",
+          "noyabr", "dekabr"]
+EN_MONTHS = {m: i for i, m in enumerate(
+    ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october",
+     "november", "december"], 1)}
+DEADLINE_WINDOW = timedelta(days=7)  # the countdown ring is full a week before a deadline
 
 app = Flask(__name__)
 
@@ -46,6 +57,17 @@ def human_delta(delta):
     return f"{hours} soat {mins} daqiqa" if hours else f"{mins} daqiqa"
 
 
+def human_ago(when, now):
+    minutes = int((now - when).total_seconds() // 60)
+    if minutes < 1:
+        return "hozirgina"
+    if minutes < 60:
+        return f"{minutes} daqiqa oldin"
+    if minutes < 24 * 60:
+        return f"{minutes // 60} soat oldin"
+    return f"{minutes // (24 * 60)} kun oldin"
+
+
 def deadline(row, now):
     """Assignment row -> dict with a display state: done / overdue / soon / upcoming / nodate."""
     due = parse_due(row["due_date"])
@@ -59,16 +81,46 @@ def deadline(row, now):
         state = "soon"
     else:
         state = "upcoming"
+    remaining = due - now if due and due > now else None
     return dict(row) | {
         "state": state,
         "due": due,
-        "left": human_delta(due - now) if due and due > now else None,
+        "due_iso": due.isoformat() if due else None,
+        "left": human_delta(remaining) if remaining else None,
+        "ring": min(1.0, remaining / DEADLINE_WINDOW) if remaining else 0.0,
+        "days_left": remaining.days if remaining else 0,
+        "hours_left": int(remaining.total_seconds() // 3600) if remaining else 0,
     }
 
 
 def grade_percent(grade):
     m = re.match(r"\s*([\d.]+)\s*/\s*([\d.]+)", grade or "")
     return round(100 * float(m.group(1)) / float(m.group(2))) if m and float(m.group(2)) else None
+
+
+WEEK_RE = re.compile(r"^(\d+)\s*Week\s*\[(\d{1,2})\s+([A-Za-z]+)\s*-\s*(\d{1,2})\s+([A-Za-z]+)\]", re.I)
+
+
+def week_info(name, today):
+    """'3Week [19 September - 25 September]' -> title, Uzbek date range and whether it is this week."""
+    m = WEEK_RE.match(name or "")
+    if not m:
+        general = not name or name.lower().startswith("course")
+        return {"title": "Umumiy" if general else name, "range": None, "current": False, "past": False}
+    number, d1, m1, d2, m2 = m.groups()
+    try:
+        start = date(today.year, EN_MONTHS[m1.lower()], int(d1))
+        end = date(today.year, EN_MONTHS[m2.lower()], int(d2))
+    except (KeyError, ValueError):
+        return {"title": f"{number}-hafta", "range": None, "current": False, "past": False}
+    if end < start:  # a week crossing New Year
+        end = end.replace(year=end.year + 1)
+    return {
+        "title": f"{number}-hafta",
+        "range": f"{start.day} {MONTHS[start.month - 1][:3]} – {end.day} {MONTHS[end.month - 1][:3]}",
+        "current": start <= today <= end,
+        "past": end < today,
+    }
 
 
 ASSIGN_SQL = """
@@ -96,15 +148,31 @@ def courses():
         """SELECT c.*,
                   (SELECT COUNT(*) FROM files f JOIN activities a ON a.id = f.activity_id
                    WHERE a.course_id = c.id AND a.type != 'assign') AS n_files,
+                  (SELECT COUNT(*) FROM study s JOIN files f ON f.id = s.file_id AND f.sha256 = s.sha256
+                   JOIN activities a ON a.id = f.activity_id WHERE a.course_id = c.id) AS n_study,
                   (SELECT COUNT(*) FROM activities a WHERE a.course_id = c.id AND a.type = 'assign') AS n_assign
            FROM courses c ORDER BY c.name""").fetchall()
 
 
+def _colors():
+    if "colors" not in g:
+        ids = [r["id"] for r in conn().execute("SELECT id FROM courses ORDER BY id")]
+        g.colors = {cid: COURSE_COLORS[i % len(COURSE_COLORS)] for i, cid in enumerate(ids)}
+    return g.colors
+
+
 @app.context_processor
 def _globals():
+    now = datetime.now().astimezone()
     last = conn().execute("SELECT MAX(last_seen) AS t FROM courses").fetchone()["t"]
-    synced = datetime.fromisoformat(last).astimezone().strftime("%d.%m %H:%M") if last else "—"
-    return {"nav_courses": courses(), "last_sync": synced, "eclass_url": ECLASS_URL}
+    synced = datetime.fromisoformat(last).astimezone() if last else None
+    colors = _colors()
+    return {
+        "eclass_url": ECLASS_URL,
+        "last_sync": human_ago(synced, now) if synced else "hali yo'q",
+        "sync_fresh": bool(synced and now - synced < timedelta(hours=4)),
+        "course_color": lambda cid: colors.get(cid, COURSE_COLORS[0]),
+    }
 
 
 @app.template_filter("size")
@@ -118,32 +186,61 @@ def _size(n):
 
 @app.template_filter("dt")
 def _dt(value):
-    return value.strftime("%d.%m %H:%M") if value else "—"
+    return f"{value.day} {MONTHS[value.month - 1][:3]}, {value:%H:%M}" if value else "—"
+
+
+@app.template_filter("ext")
+def _ext(name):
+    return Path(name).suffix.lstrip(".").upper()[:4] or "FAYL"
 
 
 # ---------------------------------------------------------------- pages
 
 @app.route("/")
 def index():
+    now = datetime.now().astimezone()
     items = all_assignments()
     pending = [d for d in items if d["state"] != "done"]
+    upcoming = [d for d in pending if d["due"] and d["due"] > now]
     graded = [d | {"pct": grade_percent(d["grade"])} for d in items if d["grade"]]
-    materials = conn().execute(
+    pcts = [d["pct"] for d in graded if d["pct"] is not None]
+    c = conn()
+    stats = {
+        "pending": len(pending),
+        "avg": round(sum(pcts) / len(pcts)) if pcts else None,
+        "materials": c.execute(
+            "SELECT COUNT(*) FROM files f JOIN activities a ON a.id = f.activity_id WHERE a.type != 'assign'"
+        ).fetchone()[0],
+        "packs": c.execute(
+            "SELECT COUNT(*) FROM study s JOIN files f ON f.id = s.file_id AND f.sha256 = s.sha256").fetchone()[0],
+    }
+    materials = c.execute(
         """SELECT f.id, f.filename, f.downloaded_at, a.name AS activity, c.id AS course_id,
                   c.name AS course, (s.file_id IS NOT NULL) AS has_study
            FROM files f JOIN activities a ON a.id = f.activity_id JOIN courses c ON c.id = a.course_id
            LEFT JOIN study s ON s.file_id = f.id AND s.sha256 = f.sha256
-           WHERE a.type != 'assign' ORDER BY f.downloaded_at DESC, f.id DESC LIMIT 8""").fetchall()
-    return render_template("index.html", pending=pending, graded=graded, materials=materials,
-                           course_list=courses())
+           WHERE a.type != 'assign' ORDER BY f.downloaded_at DESC, f.id DESC LIMIT 7""").fetchall()
+    hour = now.hour
+    if 5 <= hour < 11:
+        greeting = "Xayrli tong"
+    elif 11 <= hour < 17:
+        greeting = "Xayrli kun"
+    elif 17 <= hour < 22:
+        greeting = "Xayrli kech"
+    else:
+        greeting = "Xayrli tun"
+    return render_template(
+        "index.html", pending=pending, next_due=upcoming[0] if upcoming else None, graded=graded,
+        materials=materials, course_list=courses(), stats=stats, greeting=greeting,
+        today=f"{WEEKDAYS[now.weekday()]}, {now.day} {MONTHS[now.month - 1]}")
 
 
 @app.route("/course/<int:course_id>")
 def course(course_id):
-    c = conn()
-    info = c.execute("SELECT * FROM courses WHERE id = ?", (course_id,)).fetchone()
+    info = next((c for c in courses() if c["id"] == course_id), None)
     if info is None:
         abort(404)
+    c = conn()
     sections = c.execute(
         "SELECT * FROM sections WHERE course_id = ? ORDER BY number", (course_id,)).fetchall()
     acts = c.execute(
@@ -159,7 +256,9 @@ def course(course_id):
     by_section = {}
     for a in acts:
         by_section.setdefault(a["section"], []).append(a)
-    weeks = [(s, by_section[s["number"]]) for s in sections if by_section.get(s["number"])]
+    today = date.today()
+    weeks = [(s, week_info(s["name"], today), by_section[s["number"]])
+             for s in sections if by_section.get(s["number"])]
     return render_template("course.html", course=info, weeks=weeks, files=files, assigns=assigns)
 
 
@@ -179,12 +278,41 @@ def study_page(file_id):
 def grades():
     items = [d | {"pct": grade_percent(d["grade"])} for d in all_assignments()]
     items.sort(key=lambda d: (d["course"], d["due_date"] or ""))
-    return render_template("grades.html", items=items)
+    pcts = [d["pct"] for d in items if d["pct"] is not None]
+    summary = {
+        "avg": round(sum(pcts) / len(pcts)) if pcts else None,
+        "graded": len(pcts),
+        "done": sum(d["state"] == "done" for d in items),
+        "total": len(items),
+    }
+    return render_template("grades.html", items=items, summary=summary)
+
+
+def question_suggestions():
+    """Key concepts from the study packs, per course id ('' = all courses), as question starters."""
+    rows = conn().execute(
+        """SELECT a.course_id, s.concepts FROM study s JOIN files f ON f.id = s.file_id
+           JOIN activities a ON a.id = f.activity_id""")
+    terms = {}
+    for r in rows:
+        for concept in json.loads(r["concepts"]):
+            term = re.sub(r"\s*\([^)]*\)", "", concept["term"]).strip()
+            if 2 < len(term) <= 40:
+                terms.setdefault(r["course_id"], []).append(term)
+    rng = random.Random()
+    out = {}
+    for cid, ts in terms.items():
+        unique = list(dict.fromkeys(ts))
+        out[str(cid)] = rng.sample(unique, min(4, len(unique)))
+    everything = list(dict.fromkeys(t for ts in terms.values() for t in ts))
+    out[""] = rng.sample(everything, min(4, len(everything)))
+    return out
 
 
 @app.route("/ask")
 def ask_page():
-    return render_template("ask.html", course_list=courses(), selected=request.args.get("course", type=int))
+    return render_template("ask.html", course_list=courses(), suggestions=question_suggestions(),
+                           selected=request.args.get("course", type=int))
 
 
 @app.route("/api/ask", methods=["POST"])

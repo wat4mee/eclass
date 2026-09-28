@@ -5,6 +5,7 @@ and never appear in logs or exception messages.
 """
 import json
 import os
+import re
 import time
 from collections import deque
 
@@ -14,6 +15,21 @@ from dotenv import load_dotenv
 
 class AIError(RuntimeError):
     pass
+
+
+_ESCAPED_UNICODE = re.compile(r"\\u([0-9a-fA-F]{4})")
+
+
+def unescape(value):
+    """Undo double escaping the models sometimes emit inside JSON strings (e.g. bo\\u2018lgan, bo\\'yicha)."""
+    if isinstance(value, str):
+        value = _ESCAPED_UNICODE.sub(lambda m: chr(int(m.group(1), 16)), value)
+        return value.replace("\\'", "'").replace('\\"', '"')
+    if isinstance(value, list):
+        return [unescape(v) for v in value]
+    if isinstance(value, dict):
+        return {k: unescape(v) for k, v in value.items()}
+    return value
 
 
 class DailyLimitReached(AIError):
@@ -86,7 +102,7 @@ class GroqProvider:
             choice = data["choices"][0]
             if choice.get("finish_reason") == "length":
                 raise AIError("groq: output truncated (max_completion_tokens too small)")
-            return json.loads(choice["message"]["content"])
+            return unescape(json.loads(choice["message"]["content"]))
         raise AIError("groq: still rate limited after retries")
 
 
@@ -116,7 +132,7 @@ class OllamaProvider:
             raise AIError(f"ollama not reachable at {self.url}: {type(exc).__name__}") from None
         if resp.status_code != 200:
             raise AIError(f"ollama {resp.status_code}: {_error_message(resp)}")
-        return json.loads(resp.json()["message"]["content"])
+        return unescape(json.loads(resp.json()["message"]["content"]))
 
 
 PROVIDERS = {"groq": GroqProvider, "ollama": OllamaProvider}
