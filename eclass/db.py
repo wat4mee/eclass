@@ -98,6 +98,19 @@ CREATE TABLE IF NOT EXISTS study_notes (  -- map step for long files; lets a run
     notes    TEXT NOT NULL,
     PRIMARY KEY (file_id, sha256, chunk)
 );
+
+CREATE TABLE IF NOT EXISTS chunks (       -- retrieval units for course Q&A (stage 4)
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id    INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    sha256     TEXT NOT NULL,             -- file version the chunk was cut from
+    page       INTEGER NOT NULL,
+    text       TEXT NOT NULL,
+    embedding  BLOB NOT NULL              -- float32[384], L2-normalized
+);
+CREATE INDEX IF NOT EXISTS chunks_file ON chunks(file_id);
+
+-- keyword index; rowid = chunks.id
+CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(text, tokenize = 'porter unicode61');
 """
 
 
@@ -106,8 +119,9 @@ def now():
 
 
 def connect(path):
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, timeout=30)  # wait for another writer instead of failing
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode = WAL")  # readers (dashboard) never block the writer
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
     return conn

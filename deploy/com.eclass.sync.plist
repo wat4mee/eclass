@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.eclass.sync</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/muhammadshahzod/all codes/eclass/.venv/bin/python</string>
+        <string>-u</string>
+        <string>/Users/muhammadshahzod/all codes/eclass/sync.py</string>
+        <string>--all</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/muhammadshahzod/all codes/eclass</string>
+    <!-- every 3 hours; runs missed while the Mac sleeps are coalesced into one on wake -->
+    <key>StartInterval</key>
+    <integer>10800</integer>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/Users/muhammadshahzod/all codes/eclass/data/logs/sync.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/muhammadshahzod/all codes/eclass/data/logs/sync.log</string>
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

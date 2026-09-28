@@ -12,7 +12,7 @@ from collections import Counter
 from pathlib import Path
 from urllib.parse import urlparse
 
-from eclass import db, extract, notify, study, telegram
+from eclass import db, extract, notify, rag, study, telegram
 from eclass.activities import (
     SUPPORTED_TYPES,
     parse_activity,
@@ -128,6 +128,8 @@ def _main():
 
     print("\nextracting text...")
     print(" ", extract.extract_pending(conn))
+    print("indexing for Q&A...")
+    print(" ", rag.index_pending(conn, log=lambda *_: None))
     if not args.no_ai:
         try:
             provider = get_provider()
