@@ -7,12 +7,16 @@
     python sync.py --all --no-ai            # sync + text extraction, no AI study packs
 """
 import argparse
+import os
 import sys
+import traceback
 from collections import Counter
 from pathlib import Path
 from urllib.parse import urlparse
 
-from eclass import db, extract, notify, rag, study, telegram
+import requests
+
+from eclass import db, extract, notify, rag, study, syncstatus, telegram
 from eclass.activities import (
     SUPPORTED_TYPES,
     parse_activity,
@@ -21,12 +25,17 @@ from eclass.activities import (
     resolve_url,
 )
 from eclass.ai import AIError, get_provider
-from eclass.auth import EClassClient
+from eclass.auth import EClassClient, LoginError
 from eclass.lock import exclusive_run
 from eclass.courses import list_courses, parse_course_page
 from eclass.files import download_links, download_ubfile, safe_name, section_dir
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
+NEW_ITEMS = []  # what this run found: shown by the dashboard after a sync
+
+
+def remember(kind, course, name):
+    NEW_ITEMS.append({"kind": kind, "course": course, "name": name})
 
 
 def process_activity(client, conn, act, dest_dir, refresh, stats):
@@ -38,7 +47,9 @@ def process_activity(client, conn, act, dest_dir, refresh, stats):
         results = download_links(client, conn, act["id"], links, dest_dir / safe_name(act["name"]), refresh)
     elif kind == "assign":
         info, attachments = parse_assign(client.soup(act["url"]))
-        db.upsert_assignment(conn, act["id"], info)
+        previous = db.upsert_assignment(conn, act["id"], info)
+        if previous is not None and info["grade"] and info["grade"] != previous["grade"]:
+            remember("grade", act["course_name"], f"{act['name']}: {info['grade']}")
         stats["assignments"] += 1
         print(f"      due={info['due_date']} | {info['submission_status']} | "
               f"{info['grading_status']} | grade={info['grade']}")
@@ -47,6 +58,8 @@ def process_activity(client, conn, act, dest_dir, refresh, stats):
         return
     for r in results:
         stats[f"files_{r}"] += 1
+    if kind != "assign" and any(r in ("new", "updated") for r in results) and not act.get("is_new"):
+        remember("material", act["course_name"], act["name"])  # a new file in an existing activity
     if results:
         print(f"      files: {dict(Counter(results))}")
 
@@ -76,6 +89,9 @@ def sync_course(client, conn, course, files_root, refresh, stats):
                 if act["type"] == "url" and act["url"]:
                     act["url"] = resolve_external_url(client, conn, act, refresh)
                 is_new = db.upsert_activity(conn, act)
+                act["is_new"], act["course_name"] = is_new, course["name"]
+                if is_new and act["type"] in ("ubfile", "folder", "url", "assign"):
+                    remember("assignment" if act["type"] == "assign" else "material", course["name"], act["name"])
                 stats["activities"] += 1
                 stats[f"type_{act['type']}"] += 1
                 stats["activities_new"] += is_new
@@ -91,7 +107,27 @@ def sync_course(client, conn, course, files_root, refresh, stats):
 
 def main():
     with exclusive_run(DATA_DIR / ".run.lock"):
-        return _main()
+        started = db.now()
+        syncstatus.write(DATA_DIR, {"state": "running", "started": started, "pid": os.getpid()})
+        status = {"started": started}
+        try:
+            code, stats = _main()
+            status |= {"state": "done", "new": NEW_ITEMS[:50], "counts": {
+                "new_files": stats["files_new"] + stats["files_updated"], "errors": stats["errors"]}}
+        except LoginError as exc:
+            print(f"login failed: {exc}", file=sys.stderr)
+            status |= {"state": "error", "code": "login"}
+            code = 2
+        except (requests.ConnectionError, requests.Timeout, requests.HTTPError) as exc:
+            print(f"eClass unreachable: {type(exc).__name__}", file=sys.stderr)
+            status |= {"state": "error", "code": "network"}
+            code = 3
+        except Exception:
+            traceback.print_exc()
+            status |= {"state": "error", "code": "other"}
+            code = 4
+        syncstatus.write(DATA_DIR, status | {"finished": db.now()})
+        return code
 
 
 def _main():
@@ -159,7 +195,7 @@ def _main():
     print(f"assignments: {stats['assignments']}")
     print(f"errors:      {stats['errors']}")
     print(f"requests:    {client.request_count}")
-    return 1 if stats["errors"] else 0
+    return (1 if stats["errors"] else 0), stats
 
 
 if __name__ == "__main__":

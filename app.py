@@ -7,18 +7,21 @@ import json
 import logging
 import random
 import re
+import subprocess
+import sys
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from flask import Flask, abort, g, jsonify, render_template, request, send_file, url_for
 
-from eclass import db, i18n, rag, study
+from eclass import db, i18n, rag, study, syncstatus
 from eclass.ai import AIError, DailyLimitReached, get_provider
 from eclass.notify import is_submitted, parse_due
 
 ROOT = Path(__file__).resolve().parent
-DB_PATH = ROOT / "data" / "eclass.db"
+DATA_DIR = ROOT / "data"
+DB_PATH = DATA_DIR / "eclass.db"
 FILES_DIR = (ROOT / "data" / "files").resolve()
 ECLASS_URL = "https://eclass.inha.ac.kr"
 
@@ -175,8 +178,21 @@ def _globals():
         "langs": i18n.LANGS,
         "lang_url": lang_url,
         "js_t": i18n.js_strings(g.lang),
+        "sync_status": sync_status(),
         "status_label": lambda s: T(f"status.{s.lower()}") if s and f"status.{s.lower()}" in i18n.S else (s or ""),
     }
+
+
+def sync_status():
+    """Latest sync state for the page, with a localized error message."""
+    status = syncstatus.read(DATA_DIR)
+    if status.get("state") == "running" and not syncstatus.busy(DATA_DIR):
+        started = datetime.fromisoformat(status.get("started", "1970-01-01T00:00:00+00:00"))
+        if datetime.now(started.tzinfo) - started > timedelta(seconds=20):  # died without writing a result
+            status = status | {"state": "error", "code": "stopped"}
+    if status.get("state") == "error":
+        status["message"] = T(f"sync.err.{status.get('code', 'other')}")
+    return status
 
 
 def lang_url(code):
@@ -380,6 +396,25 @@ def api_ask():
         log.exception("ask crashed")
         return jsonify(error=T("err.ai")), 500
     return jsonify(result)
+
+
+@app.route("/api/sync", methods=["POST"])
+def api_sync():
+    if not request.is_json:
+        abort(415)
+    if not syncstatus.busy(DATA_DIR):
+        syncstatus.write(DATA_DIR, {"state": "running", "started": db.now(), "by": "dashboard"})
+        (DATA_DIR / "logs").mkdir(parents=True, exist_ok=True)
+        with open(DATA_DIR / "logs" / "sync.log", "a") as out:
+            subprocess.Popen([sys.executable, "-u", str(ROOT / "sync.py"), "--all"], cwd=ROOT,
+                             stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
+        log.info("sync started from the dashboard")
+    return jsonify(sync_status()), 202
+
+
+@app.route("/api/sync/status")
+def api_sync_status():
+    return jsonify(sync_status())
 
 
 @app.route("/file/<int:file_id>")

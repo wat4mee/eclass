@@ -1,4 +1,4 @@
-"""Change notifications: new material, new assignment, deadline < 24h, new grade.
+"""Change notifications: new material, new assignment, deadline < 24h and < 3h, new grade.
 
 Events are derived from the database state after a sync. Every event has a
 stable key; a key is stored in `notifications` once its message was delivered,
@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from . import db, telegram
 
 DEADLINE_WINDOW = timedelta(hours=24)
+URGENT_WINDOW = timedelta(hours=3)
 DUE_FORMAT = "%Y-%m-%d %H:%M"  # as shown on eClass assignment pages
 
 
@@ -50,7 +51,8 @@ def collect_events(conn, now):
         """SELECT f.activity_id, f.filename, f.sha256, a.name, c.name AS course
            FROM files f JOIN activities a ON a.id = f.activity_id
            JOIN courses c ON c.id = a.course_id
-           WHERE a.type != 'assign' ORDER BY c.name, a.section, a.id"""
+           WHERE a.type != 'assign' AND f.path NOT LIKE 'youtube:%'
+           ORDER BY c.name, a.section, a.id"""
     ):
         prefix = f"file:{r['activity_id']}:{r['filename']}:"
         updated = any(k.startswith(prefix) for k in known)
@@ -84,14 +86,19 @@ def collect_events(conn, now):
                            "text": f"{name}: <b>{_e(r['grade'])}</b>"})
         due = parse_due(r["due_date"])
         if due and not is_submitted(r["submission_status"]) and now < due <= now + DEADLINE_WINDOW:
-            events.append({"key": f"deadline:{aid}:{r['due_date']}", "kind": "deadline",
-                           "course": r["course"],
-                           "text": f"{name} — {_e(r['due_date'])} (<b>{_left(due - now)}</b> qoldi), "
-                                   f"holat: {_e(r['submission_status'])}"})
+            day_key = f"deadline:{aid}:{r['due_date']}"
+            text = (f"{name} — {_e(r['due_date'])} (<b>{_left(due - now)}</b> qoldi), "
+                    f"holat: {_e(r['submission_status'])}")
+            if due <= now + URGENT_WINDOW:  # the 3-hour reminder also covers a 24-hour one not sent yet
+                events.append({"key": f"deadline3:{aid}:{r['due_date']}", "kind": "deadline3",
+                               "course": r["course"], "text": text, "also": [day_key]})
+            else:
+                events.append({"key": day_key, "kind": "deadline", "course": r["course"], "text": text})
     return events
 
 
 SECTIONS = [
+    ("deadline3", "🚨 <b>3 soatdan kam qoldi — topshirilmagan!</b>"),
     ("deadline", "⏰ <b>Muddat yaqin — topshirilmagan!</b>"),
     ("assign", "📝 <b>Yangi topshiriqlar</b>"),
     ("grade", "🎓 <b>Yangi baholar</b>"),
@@ -114,7 +121,7 @@ def build_messages(events):
             if e["course"] != course:
                 course = e["course"]
                 lines.append((f"<b>{_e(course)}</b>", None))
-            lines.append((f"• {e['text']}", e["key"]))
+            lines.append((f"• {e['text']}", [e["key"], *e.get("also", [])]))
 
     messages, text, keys = [], "", []
     for line, key in lines:
@@ -123,7 +130,7 @@ def build_messages(events):
             text, keys = "", []
         text = f"{text}\n{line}" if text else line
         if key:
-            keys.append(key)
+            keys.extend(key)
     if keys:
         messages.append((text, keys))
     return messages
@@ -137,22 +144,23 @@ def run(conn, dry_run=False, now=None):
 
     note = ""
     if not known:  # first run: remember what already exists, send only urgent deadlines
-        baseline = [e["key"] for e in events if e["kind"] != "deadline"]
+        baseline = [e["key"] for e in events if not e["kind"].startswith("deadline")]
         if not dry_run:
             db.mark_notified(conn, baseline, seeded=True)
         note = f"; first run: {len(baseline)} existing items marked as known"
-        events = [e for e in events if e["kind"] == "deadline"]
+        events = [e for e in events if e["kind"].startswith("deadline")]
 
     messages = build_messages(events)
     if not messages:
         return f"notifications: nothing new{note}"
 
     token, chat_id = telegram.config()
-    if dry_run or not (token and chat_id):
-        reason = "dry run" if dry_run else "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set"
+    if not dry_run and not (token and chat_id):  # Telegram is optional: skip quietly
+        return f"notifications: telegram not configured, {len(events)} pending{note}"
+    if dry_run:
         for text, _ in messages:
-            print(f"--- message ({reason}) ---\n{text}")
-        return f"notifications: {len(events)} pending, not sent ({reason}){note}"
+            print(f"--- message (dry run) ---\n{text}")
+        return f"notifications: {len(events)} pending, not sent (dry run){note}"
 
     sent = 0
     for text, keys in messages:

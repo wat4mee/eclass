@@ -111,8 +111,43 @@ button { font: inherit; }
 .tabs a.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 .tabs a.on .ico { color: var(--accent); }
 .bar-right { display: flex; align-items: center; gap: 10px; }
-.sync { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--muted); padding: 6px 12px;
-  border-radius: 999px; border: 1px solid var(--line); background: var(--surface); white-space: nowrap; }
+.sync { display: flex; align-items: center; gap: 8px; font: 600 13px var(--font); color: var(--muted); padding: 6px 12px; height: 38px;
+  border-radius: 999px; border: 1px solid var(--line); background: var(--surface); white-space: nowrap; cursor: pointer;
+  transition: border-color .2s, color .2s; }
+.sync:hover { border-color: var(--line-strong); color: var(--text); }
+.sync-ico { width: 15px; height: 15px; opacity: 0; margin-left: -4px; transition: opacity .2s, transform .5s var(--spring); }
+.sync:hover .sync-ico { opacity: 1; transform: rotate(180deg); }
+.sync-spin { display: none; width: 14px; height: 14px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-top-color: var(--accent); animation: spin .8s linear infinite; }
+.sync.running { cursor: progress; color: var(--text); }
+.sync.running .pulse, .sync.running .sync-ico { display: none; }
+.sync.running .sync-spin { display: block; }
+.sync.error { border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.sync-alert { display: flex; align-items: center; gap: 14px; padding: 14px 16px; margin: 0 0 22px; border-radius: 16px;
+  color: var(--text); background: color-mix(in srgb, var(--bad) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--bad) 45%, transparent); animation: rise .5s var(--ease) both; }
+.sync-alert[hidden] { display: none; }
+.sync-alert > div { flex: 1; font-size: 14px; }
+.sync-alert strong { color: var(--bad); }
+.sa-ico { width: 34px; height: 34px; flex: none; border-radius: 11px; display: grid; place-items: center; color: #fff; background: var(--bad); }
+.sync-alert .icon-btn { width: 32px; height: 32px; }
+.toasts { position: fixed; right: 20px; bottom: 20px; z-index: 60; display: grid; gap: 10px; width: min(380px, calc(100vw - 32px)); }
+.toast { padding: 16px 18px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-lg);
+  animation: toast-in .6s var(--spring) both; }
+.toast.out { animation: toast-out .35s var(--ease) both; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(24px) scale(.96); } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(12px) scale(.97); } }
+.toast-head { display: flex; align-items: center; gap: 10px; }
+.toast-head .ok { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; color: #fff; background: var(--ok); flex: none; }
+.toast-head strong { flex: 1; }
+.toast-head .icon-btn { width: 30px; height: 30px; }
+.toast p { margin: 10px 0 6px; font-size: 13.5px; color: var(--muted); }
+.toast ul { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; max-height: 220px; overflow: auto; }
+.toast li { font-size: 13.5px; display: flex; gap: 8px; align-items: baseline; }
+.toast li .chip { padding: 1px 8px; font-size: 11px; }
+.toast li span.muted { font-size: 12px; }
+.toast .btn { padding: 8px 14px; font-size: 13px; }
 .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--pc, var(--ok)); animation: pulse 2.4s infinite; }
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--pc, var(--ok)) 60%, transparent); }
                    70%, 100% { box-shadow: 0 0 0 9px transparent; } }
@@ -346,7 +381,12 @@ html.intro .intro-screen { position: fixed; inset: 0; z-index: 1000; display: gr
           {% endfor %}
         </div>
       </div>
-      <span class="sync" title="{{ t('sync.title') }}"><span class="pulse" style="--pc: var({{ '--ok' if sync_fresh else '--warn' }})"></span><span class="hide-sm">{{ last_sync }}</span></span>
+      <button class="sync {{ 'error' if sync_status.state == 'error' }}" id="sync-btn" type="button" title="{{ t('sync.title') }}: {{ last_sync }} · {{ js_t.sync_now }}">
+        <span class="pulse" style="--pc: var({{ '--bad' if sync_status.state == 'error' else '--ok' if sync_fresh else '--warn' }})"></span>
+        <span class="sync-spin"></span>
+        <span class="hide-sm sync-label">{{ last_sync }}</span>
+        <svg class="ico sync-ico"><use href="#i-flip"/></svg>
+      </button>
       <button class="icon-btn" id="theme" type="button" aria-label="{{ t('theme.toggle') }}">
         <svg class="tt" viewBox="0 0 24 24" aria-hidden="true">
           <mask id="tt-mask"><rect x="-4" y="-4" width="32" height="32" fill="#fff"/><circle class="tt-cut" cx="17" cy="7" r="7.5" fill="#000"/></mask>
@@ -361,8 +401,14 @@ html.intro .intro-screen { position: fixed; inset: 0; z-index: 1000; display: gr
 </header>
 
 <main>
+<div class="sync-alert" id="sync-alert" role="alert" hidden>
+  <span class="sa-ico"><svg class="ico"><use href="#i-x"/></svg></span>
+  <div><strong>{{ js_t.sync_failed }}</strong><div id="sync-alert-msg"></div></div>
+  <button class="icon-btn" type="button" id="sync-alert-close" aria-label="{{ js_t.dismiss }}"><svg class="ico"><use href="#i-x"/></svg></button>
+</div>
 {% block content %}{% endblock %}
 </main>
+<div class="toasts" id="toasts" aria-live="polite"></div>
 
 <script>
 function renderMath(el) {
@@ -423,6 +469,61 @@ const tr = (key, vars = {}) => (T[key] || key).replace(/\{(\w+)\}/g, (_, k) => v
     el.innerHTML = (d ? `<b>${d}</b><i>${T.day_short}</i>` : "") + `<b>${pad(h)}</b><i>:</i><b>${pad(m)}</b><i>:</i><b>${pad(sec)}</b>`;
   });
   if (countdowns.length) { renderCountdowns(); setInterval(renderCountdowns, 1000); }
+
+  // sync now: start a background sync, follow its progress, report what arrived or why it failed
+  const SYNC = {{ sync_status | tojson }};
+  const syncBtn = document.getElementById("sync-btn"), syncLabel = syncBtn.querySelector(".sync-label");
+  const alertBox = document.getElementById("sync-alert");
+  const escHtml = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const showAlert = msg => { document.getElementById("sync-alert-msg").textContent = msg; alertBox.hidden = false; syncBtn.classList.add("error"); };
+  document.getElementById("sync-alert-close").onclick = () => { alertBox.hidden = true; };
+  const setRunning = on => {
+    syncBtn.classList.toggle("running", on);
+    syncBtn.disabled = on;
+    if (on) syncLabel.textContent = T.sync_running;
+  };
+  const toast = status => {
+    const items = status.new || [];
+    const box = document.createElement("div");
+    box.className = "toast";
+    box.innerHTML = `<div class="toast-head"><span class="ok"><svg class="ico"><use href="#i-check"/></svg></span>
+        <strong>${escHtml(T.sync_done)}</strong>
+        <button class="icon-btn" type="button" aria-label="${escHtml(T.dismiss)}"><svg class="ico"><use href="#i-x"/></svg></button></div>
+      <p>${escHtml(items.length ? T.sync_found : T.sync_nothing)}</p>
+      ${items.length ? `<ul>${items.slice(0, 8).map(i => `<li><span class="chip">${escHtml(T["kind_" + i.kind] || i.kind)}</span>
+        <span>${escHtml(i.name)} <span class="muted">· ${escHtml(i.course)}</span></span></li>`).join("")}</ul>` : ""}
+      <button class="btn" type="button">${escHtml(T.sync_reload)}</button>`;
+    const close = () => { box.classList.add("out"); setTimeout(() => box.remove(), 350); };
+    box.querySelector(".icon-btn").onclick = close;
+    box.querySelector(".btn").onclick = () => location.reload();
+    document.getElementById("toasts").appendChild(box);
+    if (!items.length) setTimeout(close, 6000);
+  };
+  const finish = status => {
+    setRunning(false);
+    const dot = syncBtn.querySelector(".pulse");
+    if (status.state === "error") {
+      showAlert(status.message || T.network); syncLabel.textContent = T.sync_failed; dot.style.setProperty("--pc", "var(--bad)");
+    } else {
+      syncBtn.classList.remove("error"); syncLabel.textContent = T.just_now; dot.style.setProperty("--pc", "var(--ok)"); toast(status);
+    }
+  };
+  const poll = () => setTimeout(async () => {
+    try {
+      const status = await (await fetch("/api/sync/status")).json();
+      status.state === "running" ? poll() : finish(status);
+    } catch (e) { poll(); }
+  }, 2000);
+  syncBtn.addEventListener("click", async () => {
+    alertBox.hidden = true;
+    setRunning(true);
+    try {
+      await fetch("/api/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      poll();
+    } catch (e) { setRunning(false); showAlert(T.network); }
+  });
+  if (SYNC.state === "running") { setRunning(true); poll(); }
+  else if (SYNC.state === "error") showAlert(SYNC.message);
 
   // language menu
   const langBox = document.getElementById("lang"), langBtn = langBox.querySelector(".lang-btn");

@@ -3,25 +3,24 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.eclass.sync</string>
+    <string>com.eclass.notify</string>
     <key>ProgramArguments</key>
     <array>
         <string>__ROOT__/.venv/bin/python</string>
         <string>-u</string>
-        <string>__ROOT__/sync.py</string>
-        <string>--all</string>
+        <string>__ROOT__/notify.py</string>
     </array>
     <key>WorkingDirectory</key>
     <string>__ROOT__</string>
-    <!-- every 3 hours; runs missed while the Mac sleeps are coalesced into one on wake -->
+    <!-- deadline reminders (24 h / 3 h) from the local database every 30 minutes; no eClass requests -->
     <key>StartInterval</key>
-    <integer>10800</integer>
+    <integer>1800</integer>
     <key>RunAtLoad</key>
     <false/>
     <key>StandardOutPath</key>
-    <string>__ROOT__/data/logs/sync.log</string>
+    <string>__ROOT__/data/logs/notify.log</string>
     <key>StandardErrorPath</key>
-    <string>__ROOT__/data/logs/sync.log</string>
+    <string>__ROOT__/data/logs/notify.log</string>
     <key>ProcessType</key>
     <string>Background</string>
 </dict>

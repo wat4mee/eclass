@@ -6,12 +6,12 @@
     <string>com.eclass.web</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/muhammadshahzod/all codes/eclass/.venv/bin/python</string>
+        <string>__ROOT__/.venv/bin/python</string>
         <string>-u</string>
-        <string>/Users/muhammadshahzod/all codes/eclass/app.py</string>
+        <string>__ROOT__/app.py</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>/Users/muhammadshahzod/all codes/eclass</string>
+    <string>__ROOT__</string>
     <!-- dashboard on http://127.0.0.1:5050, started at login and restarted if it exits -->
     <key>RunAtLoad</key>
     <true/>
@@ -20,9 +20,9 @@
     <key>ThrottleInterval</key>
     <integer>30</integer>
     <key>StandardOutPath</key>
-    <string>/Users/muhammadshahzod/all codes/eclass/data/logs/web.log</string>
+    <string>__ROOT__/data/logs/web.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/muhammadshahzod/all codes/eclass/data/logs/web.log</string>
+    <string>__ROOT__/data/logs/web.log</string>
     <key>ProcessType</key>
     <string>Background</string>
 </dict>
