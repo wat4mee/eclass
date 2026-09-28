@@ -79,7 +79,9 @@ tracks deadlines/grades, and analyzes materials with AI. Personal use only, sing
 - 1 sync: done (`sync.py`). 2 notifications: done (`notify.py`), Telegram not connected yet.
 - 3 extraction + study packs: done (`analyze.py`); Calculus lecture PDFs are image-only -> OCR.
 - 4 Q&A: done (`ask.py`, `eclass/rag.py`): FTS5 + local `BAAI/bge-small-en-v1.5` (fastembed, cached in
-  `data/models`). Textbooks > 150K chars are indexed only with `ask.py --index --books` (minutes of full CPU).
-- 5 dashboard: done (`app.py`, `templates/`), `python app.py` -> http://127.0.0.1:5050 (local only).
-- Scheduling: launchd agent `deploy/com.eclass.sync.plist` (copied to ~/Library/LaunchAgents) runs
-  `sync.py --all` every 3 h; `eclass/lock.py` prevents overlapping runs. Logs in `data/logs/`.
+  `data/models`). Embedding uses `EMBED_THREADS` (default 2) cores and commits every 40 pages
+  (`index_state`), so textbooks index in the background and resume after interruption.
+- 5 dashboard: done (`app.py`, `templates/`) -> http://127.0.0.1:5050 (local only).
+- launchd agents (sources in `deploy/`, installed in ~/Library/LaunchAgents):
+  `com.eclass.sync` runs `sync.py --all` every 3 h; `com.eclass.web` keeps the dashboard running.
+  `eclass/lock.py` prevents overlapping sync/analyze runs. Logs in `data/logs/`.

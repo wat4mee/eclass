@@ -111,6 +111,13 @@ CREATE INDEX IF NOT EXISTS chunks_file ON chunks(file_id);
 
 -- keyword index; rowid = chunks.id
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(text, tokenize = 'porter unicode61');
+
+CREATE TABLE IF NOT EXISTS index_state (  -- progress per file, so long textbooks resume mid-way
+    file_id    INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+    sha256     TEXT NOT NULL,
+    done_page  INTEGER NOT NULL,          -- pages <= done_page are chunked and embedded
+    complete   INTEGER NOT NULL DEFAULT 0
+);
 """
 
 

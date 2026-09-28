@@ -4,6 +4,7 @@ Materials are English while questions are usually Uzbek, so each question is fir
 rewritten into an English search query by the LLM; retrieval then runs locally and
 the LLM answers only from the retrieved passages, citing file and page.
 """
+import os
 import re
 from pathlib import Path
 
@@ -14,7 +15,8 @@ MODEL_DIR = Path(__file__).resolve().parent.parent / "data" / "models"
 CHUNK_CHARS = 1200
 OVERLAP = 200
 TOP_K = 8
-BOOK_CHARS = 150_000  # textbooks: indexing them takes minutes of full CPU, so only on request
+EMBED_THREADS = int(os.getenv("EMBED_THREADS", "2"))  # keep the Mac responsive; 0 = all cores
+PAGE_BATCH = 40  # pages embedded and committed per step, so textbooks resume after an interruption
 _CANDIDATES = 40
 _RRF_K = 60
 
@@ -26,7 +28,7 @@ def _embedder():
     if _model is None:
         from fastembed import TextEmbedding
 
-        _model = TextEmbedding(EMBED_MODEL, cache_dir=str(MODEL_DIR))
+        _model = TextEmbedding(EMBED_MODEL, cache_dir=str(MODEL_DIR), threads=EMBED_THREADS or None)
     return _model
 
 
@@ -51,15 +53,24 @@ def split_page(text, size=CHUNK_CHARS, overlap=OVERLAP):
 
 # ---------------------------------------------------------------- indexing
 
-def pending_files(conn, include_books=False):
-    """Extracted files whose chunks are missing or cut from an older file version."""
+def _backfill_state(conn):
+    """Files indexed before index_state existed were written in one transaction, so they are complete."""
+    conn.execute(
+        """INSERT OR IGNORE INTO index_state (file_id, sha256, done_page, complete)
+           SELECT c.file_id, c.sha256, MAX(c.page), 1 FROM chunks c
+           JOIN files f ON f.id = c.file_id AND f.sha256 = c.sha256 GROUP BY c.file_id""")
+    conn.commit()
+
+
+def pending_files(conn):
+    """Extracted files not fully indexed for their current version, smallest first."""
+    _backfill_state(conn)
     return conn.execute(
-        """SELECT f.id, f.filename, f.sha256 FROM files f
+        """SELECT f.id, f.filename, f.sha256, e.n_pages FROM files f
            JOIN extractions e ON e.file_id = f.id AND e.sha256 = f.sha256
-           WHERE e.error IS NULL AND e.n_chars > 0 AND (e.n_chars <= ? OR ?)
-             AND NOT EXISTS (SELECT 1 FROM chunks c WHERE c.file_id = f.id AND c.sha256 = f.sha256)
-           ORDER BY f.id""",
-        (BOOK_CHARS, include_books),
+           LEFT JOIN index_state s ON s.file_id = f.id AND s.sha256 = f.sha256
+           WHERE e.error IS NULL AND e.n_chars > 0 AND COALESCE(s.complete, 0) = 0
+           ORDER BY e.n_chars, f.id"""
     ).fetchall()
 
 
@@ -68,19 +79,23 @@ def _drop_file(conn, file_id):
     conn.execute("DELETE FROM chunks WHERE file_id = ?", (file_id,))
 
 
-def index_pending(conn, include_books=False, log=print):
-    stats = {"files": 0, "chunks": 0}
-    todo = pending_files(conn, include_books)
-    if not todo:
-        return stats
-    model = _embedder()
-    for f in todo:
-        pieces = [(r["page"], c) for r in conn.execute(
-            "SELECT page, text FROM pages WHERE file_id = ? ORDER BY page", (f["id"],))
-            for c in split_page(r["text"])]
-        # embed before touching the database, so the write transaction stays short
-        vectors = list(model.embed([c for _, c in pieces], batch_size=64)) if pieces else []
+def _index_file(conn, model, f, log):
+    state = conn.execute("SELECT sha256, done_page FROM index_state WHERE file_id = ?", (f["id"],)).fetchone()
+    if state is None or state["sha256"] != f["sha256"]:  # new file or new version: start over
         _drop_file(conn, f["id"])
+        conn.execute("INSERT OR REPLACE INTO index_state VALUES (?, ?, 0, 0)", (f["id"], f["sha256"]))
+        conn.commit()
+        done = 0
+    else:
+        done = state["done_page"]
+    pages = conn.execute(
+        "SELECT page, text FROM pages WHERE file_id = ? AND page > ? ORDER BY page", (f["id"], done)).fetchall()
+    total = 0
+    for i in range(0, len(pages), PAGE_BATCH):
+        batch = pages[i:i + PAGE_BATCH]
+        pieces = [(r["page"], c) for r in batch for c in split_page(r["text"])]
+        # embed before touching the database, so the write transaction stays short
+        vectors = list(model.embed([c for _, c in pieces], batch_size=16)) if pieces else []
         for (page, text), vec in zip(pieces, vectors):
             vec = np.asarray(vec, dtype=np.float32)
             vec /= np.linalg.norm(vec) or 1.0
@@ -88,10 +103,27 @@ def index_pending(conn, include_books=False, log=print):
                 "INSERT INTO chunks (file_id, sha256, page, text, embedding) VALUES (?, ?, ?, ?, ?)",
                 (f["id"], f["sha256"], page, text, vec.tobytes()))
             conn.execute("INSERT INTO chunks_fts (rowid, text) VALUES (?, ?)", (cur.lastrowid, text))
+        conn.execute("UPDATE index_state SET done_page = ? WHERE file_id = ?", (batch[-1]["page"], f["id"]))
         conn.commit()
+        total += len(pieces)
+        if len(pages) > PAGE_BATCH:
+            log(f"    {f['filename']}: page {batch[-1]['page']}/{f['n_pages']}")
+    conn.execute("UPDATE index_state SET complete = 1 WHERE file_id = ?", (f["id"],))
+    conn.commit()
+    return total
+
+
+def index_pending(conn, log=print):
+    stats = {"files": 0, "chunks": 0}
+    todo = pending_files(conn)
+    if not todo:
+        return stats
+    model = _embedder()
+    for f in todo:
+        n = _index_file(conn, model, f, log)
         stats["files"] += 1
-        stats["chunks"] += len(pieces)
-        log(f"  indexed {len(pieces):>5} chunks  {f['filename']}")
+        stats["chunks"] += n
+        log(f"  indexed {n:>5} chunks  {f['filename']}")
     return stats
 
 

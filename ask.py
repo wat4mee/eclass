@@ -2,8 +2,7 @@
 
     python ask.py "limit ta'rifi nima?"
     python ask.py "operator overloading nima?" --course 2562
-    python ask.py --index            # index new files (textbooks skipped)
-    python ask.py --index --books    # also index the big textbooks (minutes of full CPU)
+    python ask.py --index            # index new/changed files (resumable)
 """
 import argparse
 import sys
@@ -21,7 +20,6 @@ def main():
     ap.add_argument("question", nargs="?")
     ap.add_argument("--course", type=int, help="limit the search to one course id")
     ap.add_argument("--index", action="store_true", help="index new/changed files")
-    ap.add_argument("--books", action="store_true", help="with --index: include textbooks")
     ap.add_argument("--db", default=str(DATA_DIR / "eclass.db"))
     args = ap.parse_args()
     if not args.question and not args.index:
@@ -30,7 +28,7 @@ def main():
     conn = db.connect(args.db)
     if args.index:
         with exclusive_run(DATA_DIR / ".run.lock"):
-            print(rag.index_pending(conn, include_books=args.books))
+            print(rag.index_pending(conn))
         if not args.question:
             return 0
 
