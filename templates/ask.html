@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Kursdan so'ra · eClass Companion{% endblock %}
+{% block style %}
+form.ask { display: grid; gap: 10px; }
+form.ask .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+form.ask select { width: auto; min-width: 220px; }
+.qa { margin-top: 16px; }
+.qa .question { font-weight: 600; margin-bottom: 8px; }
+.qa .answer p { margin: 0 0 10px; }
+.qa .cite { font-size: 12px; vertical-align: super; }
+.sources { margin-top: 10px; font-size: 14px; }
+.sources summary { cursor: pointer; }
+.sources .snippet { color: var(--muted); font-size: 13px; margin: 4px 0 8px; }
+.error { color: var(--bad); }
+{% endblock %}
+{% block content %}
+<h1>Kursdan so'ra</h1>
+<p class="muted" style="margin-top: -8px">Javob faqat kurs materiallari va darsliklardan olinadi, manbasi ko'rsatiladi.</p>
+<form class="card ask" id="ask">
+  <textarea id="question" rows="3" maxlength="1000" placeholder="Masalan: limitning ta'rifi nima?" required></textarea>
+  <div class="controls">
+    <select id="course">
+      <option value="">Barcha kurslar</option>
+      {% for c in course_list %}
+      <option value="{{ c.id }}" {{ "selected" if c.id == selected }}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+    <button class="primary" id="send" type="submit">So'rash</button>
+    <span class="muted small" id="status"></span>
+  </div>
+</form>
+<div id="history"></div>
+{% endblock %}
+{% block script %}
+<script>
+const esc = s => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function formatAnswer(text, id) {
+  return esc(text).split(/\n{2,}/).map(p => "<p>" + p
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\n/g, "<br>")
+    .replace(/\[(\d+)\]/g, `<a class="cite" href="#${id}-src-$1">[$1]</a>`) + "</p>").join("");
+}
+
+function renderSources(sources, id) {
+  if (!sources.length) return "";
+  const items = sources.map(s => `
+    <li id="${id}-src-${s.n}">
+      <a href="/file/${s.file_id}#page=${s.page}" target="_blank">[${s.n}] ${esc(s.course)} / ${esc(s.filename)}, ${s.page}-sahifa</a>
+      <div class="snippet">${esc(s.text.slice(0, 400))}${s.text.length > 400 ? "…" : ""}</div>
+    </li>`).join("");
+  return `<details class="sources" open><summary>Manbalar (${sources.length})</summary><ul class="list">${items}</ul></details>`;
+}
+
+let counter = 0;
+document.getElementById("ask").addEventListener("submit", async event => {
+  event.preventDefault();
+  const question = document.getElementById("question").value.trim();
+  if (!question) return;
+  const send = document.getElementById("send"), status = document.getElementById("status");
+  send.disabled = true;
+  status.textContent = "Materiallar qidirilmoqda…";
+  const id = "qa" + (++counter);
+  const block = document.createElement("section");
+  block.className = "card qa";
+  block.innerHTML = `<div class="question">${esc(question)}</div><div class="answer muted">…</div>`;
+  document.getElementById("history").prepend(block);
+  try {
+    const response = await fetch("/api/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, course_id: document.getElementById("course").value || null }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || response.statusText);
+    block.querySelector(".answer").classList.remove("muted");
+    block.querySelector(".answer").innerHTML = formatAnswer(data.answer, id) + renderSources(data.sources, id);
+    renderMath(block);
+    document.getElementById("question").value = "";
+  } catch (err) {
+    block.querySelector(".answer").innerHTML = `<p class="error">${esc(err.message)}</p>`;
+  } finally {
+    send.disabled = false;
+    status.textContent = "";
+  }
+});
+document.getElementById("question").addEventListener("keydown", e => {
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) document.getElementById("ask").requestSubmit();
+});
+</script>
+{% endblock %}

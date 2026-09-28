@@ -7,3 +7,4 @@ python-docx
 ocrmac; sys_platform == "darwin"
 fastembed
 numpy
+flask

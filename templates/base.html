@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}eClass Companion{% endblock %}</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<style>
+:root {
+  --bg: #f5f6f8; --card: #ffffff; --text: #1b1f24; --muted: #667085; --border: #e3e6eb;
+  --accent: #2f6fed; --accent-soft: #e8f0fe;
+  --ok: #1a7f37; --ok-soft: #e6f4ea; --warn: #b54708; --warn-soft: #fef0e1;
+  --bad: #c4320a; --bad-soft: #fde8e3; --idle: #475467; --idle-soft: #eef0f3;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115; --card: #171a21; --text: #e6e8eb; --muted: #98a2b3; --border: #2a2f3a;
+    --accent: #6b9bff; --accent-soft: #1c2a47;
+    --ok: #4ac26b; --ok-soft: #12301c; --warn: #f5a524; --warn-soft: #3a2a10;
+    --bad: #ff7b61; --bad-soft: #3d1a12; --idle: #b0b8c4; --idle-soft: #232833;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+header { background: var(--card); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; }
+.bar { max-width: 1100px; margin: 0 auto; padding: 10px 16px; display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.brand { font-weight: 700; color: var(--text); }
+nav { display: flex; gap: 14px; flex-wrap: wrap; flex: 1; }
+nav a { color: var(--muted); }
+nav a.on { color: var(--text); font-weight: 600; }
+.sync { color: var(--muted); font-size: 13px; }
+main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+h1 { font-size: 24px; margin: 4px 0 16px; }
+h2 { font-size: 17px; margin: 0 0 12px; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); align-items: start; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+.list { list-style: none; margin: 0; padding: 0; }
+.list > li { padding: 10px 0; border-top: 1px solid var(--border); }
+.list > li:first-child { border-top: 0; padding-top: 0; }
+.row { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.b-overdue { background: var(--bad-soft); color: var(--bad); }
+.b-soon { background: var(--warn-soft); color: var(--warn); }
+.b-upcoming { background: var(--accent-soft); color: var(--accent); }
+.b-done { background: var(--ok-soft); color: var(--ok); }
+.b-nodate { background: var(--idle-soft); color: var(--idle); }
+.pill { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.meter { height: 6px; background: var(--idle-soft); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+.meter > span { display: block; height: 100%; background: var(--ok); }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 9px 8px; border-top: 1px solid var(--border); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 13px; border-top: 0; }
+.table-wrap { overflow-x: auto; }
+button, .btn { font: inherit; cursor: pointer; border: 1px solid var(--border); background: var(--card); color: var(--text);
+  padding: 7px 14px; border-radius: 8px; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: .6; cursor: default; }
+textarea, select { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; width: 100%; }
+@media (max-width: 600px) { .grid { grid-template-columns: 1fr; } h1 { font-size: 21px; } }
+{% block style %}{% endblock %}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <a class="brand" href="{{ url_for('index') }}">eClass Companion</a>
+    <nav>
+      <a href="{{ url_for('index') }}" class="{{ 'on' if request.endpoint == 'index' }}">Bosh sahifa</a>
+      <a href="{{ url_for('grades') }}" class="{{ 'on' if request.endpoint == 'grades' }}">Baholar</a>
+      <a href="{{ url_for('ask_page') }}" class="{{ 'on' if request.endpoint == 'ask_page' }}">Kursdan so'ra</a>
+    </nav>
+    <span class="sync">Oxirgi sinxron: {{ last_sync }}</span>
+  </div>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+<script>
+function renderMath(el) {
+  if (window.renderMathInElement) {
+    renderMathInElement(el, { delimiters: [
+      { left: "$$", right: "$$", display: true }, { left: "\\[", right: "\\]", display: true },
+      { left: "\\(", right: "\\)", display: false } ], throwOnError: false });
+  }
+}
+</script>
+{% block script %}{% endblock %}
+</body>
+</html>

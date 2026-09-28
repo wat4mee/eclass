@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{{ s.activity }} · o'rganish{% endblock %}
+{% block style %}
+.two { display: grid; gap: 16px; grid-template-columns: 3fr 2fr; align-items: start; }
+@media (max-width: 800px) { .two { grid-template-columns: 1fr; } }
+.summary p { margin: 0 0 10px; }
+dl.concepts { margin: 0; }
+dl.concepts dt { font-weight: 600; margin-top: 10px; }
+dl.concepts dd { margin: 2px 0 0; color: var(--muted); }
+.cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.flash { min-height: 130px; cursor: pointer; display: flex; flex-direction: column; justify-content: center;
+  text-align: center; user-select: none; transition: background .15s; }
+.flash .back { display: none; }
+.flash.flipped { background: var(--accent-soft); }
+.flash.flipped .front { display: none; }
+.flash.flipped .back { display: block; }
+.flash .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+.q { margin-bottom: 16px; }
+.q label { display: block; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; margin: 6px 0; cursor: pointer; }
+.q label.right { border-color: var(--ok); background: var(--ok-soft); }
+.q label.wrong { border-color: var(--bad); background: var(--bad-soft); }
+.q .why { display: none; font-size: 14px; color: var(--muted); margin-top: 6px; }
+.checked .why { display: block; }
+#score { font-weight: 600; margin-left: 10px; }
+{% endblock %}
+{% block content %}
+<p class="small"><a href="{{ url_for('course', course_id=s.course_id) }}">← {{ s.course }}</a></p>
+<h1>{{ s.activity }}</h1>
+<p class="muted" style="margin-top: -8px">
+  <a href="{{ url_for('file_view', file_id=s.file_id) }}" target="_blank">{{ s.filename }}</a> ·
+  {{ s.model }}
+</p>
+
+<div class="two">
+  <section class="card summary" id="summary">
+    <h2>Qisqa mazmun</h2>
+    {% for para in s.summary.split("\n") if para.strip() %}<p>{{ para }}</p>{% endfor %}
+  </section>
+  <section class="card">
+    <h2>Asosiy tushunchalar</h2>
+    <dl class="concepts">
+      {% for c in concepts %}<dt>{{ c.term }}</dt><dd>{{ c.explanation }}</dd>{% endfor %}
+    </dl>
+  </section>
+</div>
+
+<h2 style="margin-top: 24px">Flashcard'lar <span class="muted small">— bosib aylantiring</span></h2>
+<div class="cards">
+  {% for c in flashcards %}
+  <div class="card flash" onclick="this.classList.toggle('flipped')">
+    <div class="front">{{ c.front }}<div class="hint">javobni ko'rish</div></div>
+    <div class="back">{{ c.back }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<h2 style="margin-top: 24px">Test</h2>
+<section class="card" id="quiz">
+  {% for q in quiz %}
+  {% set qi = loop.index0 %}
+  <div class="q" data-answer="{{ q.answer_index }}">
+    <strong>{{ loop.index }}. {{ q.question }}</strong>
+    {% for opt in q.options %}
+    <label><input type="radio" name="q{{ qi }}" value="{{ loop.index0 }}"> {{ "ABCD"[loop.index0] }}) {{ opt }}</label>
+    {% endfor %}
+    <div class="why">{{ q.explanation }}</div>
+  </div>
+  {% endfor %}
+  <button class="primary" id="check">Tekshirish</button>
+  <button id="reset">Qaytadan</button>
+  <span id="score"></span>
+</section>
+{% endblock %}
+{% block script %}
+<script>
+const quiz = document.getElementById("quiz");
+document.getElementById("check").onclick = () => {
+  let right = 0;
+  const qs = quiz.querySelectorAll(".q");
+  qs.forEach(q => {
+    const answer = Number(q.dataset.answer);
+    const picked = q.querySelector("input:checked");
+    q.querySelectorAll("label").forEach((label, i) => {
+      label.classList.toggle("right", i === answer);
+      label.classList.toggle("wrong", picked !== null && Number(picked.value) === i && i !== answer);
+    });
+    if (picked && Number(picked.value) === answer) right++;
+    q.classList.add("checked");
+  });
+  document.getElementById("score").textContent = `${right} / ${qs.length} to'g'ri`;
+};
+document.getElementById("reset").onclick = () => {
+  quiz.querySelectorAll("input").forEach(i => (i.checked = false));
+  quiz.querySelectorAll("label").forEach(l => l.classList.remove("right", "wrong"));
+  quiz.querySelectorAll(".q").forEach(q => q.classList.remove("checked"));
+  document.getElementById("score").textContent = "";
+};
+window.addEventListener("load", () => renderMath(document.querySelector("main")));
+</script>
+{% endblock %}

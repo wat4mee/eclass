@@ -65,8 +65,8 @@ tracks deadlines/grades, and analyzes materials with AI. Personal use only, sing
    new grade -> Telegram message.
 3. **Text extraction + AI**: for each new file extract text, then generate
    summary, key concepts, flashcards, 5-question practice quiz. Store results in DB.
-4. **Course Q&A (RAG)**: chunk texts, embeddings (local `nomic-embed-text` via Ollama or
-   a small sentence-transformers model), answer questions citing the source file/page.
+4. **Course Q&A (RAG)**: chunk texts, local embeddings + keyword search, answer questions
+   citing the source file/page.
 5. **Flask dashboard**: deadlines timeline, per-course materials with summaries,
    grades table, "ask the course" chat.
 
@@ -78,4 +78,8 @@ tracks deadlines/grades, and analyzes materials with AI. Personal use only, sing
 ## Status (2026-09-28)
 - 1 sync: done (`sync.py`). 2 notifications: done (`notify.py`), Telegram not connected yet.
 - 3 extraction + study packs: done (`analyze.py`); Calculus lecture PDFs are image-only -> OCR.
-- 4 RAG and 5 dashboard: in progress.
+- 4 Q&A: done (`ask.py`, `eclass/rag.py`): FTS5 + local `BAAI/bge-small-en-v1.5` (fastembed, cached in
+  `data/models`). Textbooks > 150K chars are indexed only with `ask.py --index --books` (minutes of full CPU).
+- 5 dashboard: done (`app.py`, `templates/`), `python app.py` -> http://127.0.0.1:5050 (local only).
+- Scheduling: launchd agent `deploy/com.eclass.sync.plist` (copied to ~/Library/LaunchAgents) runs
+  `sync.py --all` every 3 h; `eclass/lock.py` prevents overlapping runs. Logs in `data/logs/`.
