@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="uz">
+<html lang="{{ lang }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -13,12 +13,10 @@ try { var t = localStorage.getItem("theme"); if (t) document.documentElement.dat
   if (fresh && !matchMedia("(prefers-reduced-motion: reduce)").matches) document.documentElement.classList.add("intro");
 })();
 </script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700;800&display=swap">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='fonts/fonts.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='katex/katex.min.css') }}">
+<script defer src="{{ url_for('static', filename='katex/katex.min.js') }}"></script>
+<script defer src="{{ url_for('static', filename='katex/auto-render.min.js') }}"></script>
 <style>
 :root {
   --bg: #f4f2ec; --surface: #ffffff; --surface-2: #f8f6f1; --surface-3: #ece9e1;
@@ -122,7 +120,30 @@ button { font: inherit; }
   border: 1px solid var(--line); background: var(--surface); color: var(--text-2);
   transition: transform .5s var(--spring), border-color .2s, color .2s; }
 .icon-btn:hover { transform: rotate(-20deg) scale(1.08); border-color: var(--line-strong); color: var(--accent); }
-@media (max-width: 760px) { .tabs a span, .hide-sm { display: none; } .tabs a { padding: 8px 12px; } }
+.lang { position: relative; }
+.lang-btn { height: 38px; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--text-2); font: 800 12px var(--font); letter-spacing: .06em;
+  transition: border-color .2s, color .2s, transform .4s var(--spring); }
+.lang-btn:hover { border-color: var(--line-strong); color: var(--accent); }
+.lang-btn .ico { width: 17px; height: 17px; }
+.lang-menu { position: absolute; right: 0; top: calc(100% + 10px); min-width: 190px; padding: 6px; border-radius: 16px; z-index: 40;
+  background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-lg);
+  opacity: 0; transform: translateY(-8px) scale(.95); transform-origin: top right; pointer-events: none;
+  transition: opacity .2s, transform .35s var(--spring); }
+.lang.open .lang-menu { opacity: 1; transform: none; pointer-events: auto; }
+.lang-menu a { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 11px; font-weight: 600; font-size: 14px;
+  color: var(--text-2); transition: background .2s, color .2s; }
+.lang-menu a:hover { background: var(--surface-2); color: var(--text); }
+.lang-menu a b { width: 24px; font-size: 11px; letter-spacing: .06em; color: var(--muted); }
+.lang-menu a.on { color: var(--text); }
+.lang-menu a .ico { margin-left: auto; width: 16px; height: 16px; color: var(--accent); }
+@media (max-width: 760px) {
+  .tabs a span, .hide-sm, .lang-btn span { display: none; }
+  .tabs a { padding: 8px 12px; }
+  .bar { gap: 8px; padding: 10px 14px; }
+  .bar-right { gap: 6px; }
+  .lang-btn { padding: 0 10px; }
+}
 @media (max-width: 420px) { .brand-text { display: none; } }
 
 main { max-width: 1180px; margin: 0 auto; padding: 30px 20px 90px; }
@@ -301,6 +322,7 @@ html.intro .intro-screen { position: fixed; inset: 0; z-index: 1000; display: gr
   <symbol id="i-left" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
   <symbol id="i-right" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
   <symbol id="i-flip" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
   <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></symbol>
 </svg>
 
@@ -311,13 +333,21 @@ html.intro .intro-screen { position: fixed; inset: 0; z-index: 1000; display: gr
       <span class="brand-text">eClass <span class="muted">Companion</span></span>
     </a>
     <nav class="tabs">
-      <a href="{{ url_for('index') }}" class="{{ 'on' if request.endpoint == 'index' }}"><svg class="ico"><use href="#i-home"/></svg><span>Bosh sahifa</span></a>
-      <a href="{{ url_for('grades') }}" class="{{ 'on' if request.endpoint == 'grades' }}"><svg class="ico"><use href="#i-award"/></svg><span>Baholar</span></a>
-      <a href="{{ url_for('ask_page') }}" class="{{ 'on' if request.endpoint == 'ask_page' }}"><svg class="ico"><use href="#i-sparkles"/></svg><span>Kursdan so'ra</span></a>
+      <a href="{{ url_for('index') }}" class="{{ 'on' if request.endpoint == 'index' }}"><svg class="ico"><use href="#i-home"/></svg><span>{{ t('nav.home') }}</span></a>
+      <a href="{{ url_for('grades') }}" class="{{ 'on' if request.endpoint == 'grades' }}"><svg class="ico"><use href="#i-award"/></svg><span>{{ t('nav.grades') }}</span></a>
+      <a href="{{ url_for('ask_page') }}" class="{{ 'on' if request.endpoint == 'ask_page' }}"><svg class="ico"><use href="#i-sparkles"/></svg><span>{{ t('nav.ai') }}</span></a>
     </nav>
     <div class="bar-right">
-      <span class="sync" title="Oxirgi sinxronlash"><span class="pulse" style="--pc: var({{ '--ok' if sync_fresh else '--warn' }})"></span><span class="hide-sm">{{ last_sync }}</span></span>
-      <button class="icon-btn" id="theme" type="button" aria-label="Mavzuni almashtirish">
+      <div class="lang" id="lang">
+        <button class="lang-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="{{ t('lang.label') }}"><svg class="ico"><use href="#i-globe"/></svg><span>{{ lang | upper }}</span></button>
+        <div class="lang-menu" role="menu">
+          {% for code, name in langs.items() %}
+          <a role="menuitem" href="{{ lang_url(code) }}" class="{{ 'on' if code == lang }}"><b>{{ code | upper }}</b>{{ name }}{% if code == lang %}<svg class="ico"><use href="#i-check"/></svg>{% endif %}</a>
+          {% endfor %}
+        </div>
+      </div>
+      <span class="sync" title="{{ t('sync.title') }}"><span class="pulse" style="--pc: var({{ '--ok' if sync_fresh else '--warn' }})"></span><span class="hide-sm">{{ last_sync }}</span></span>
+      <button class="icon-btn" id="theme" type="button" aria-label="{{ t('theme.toggle') }}">
         <svg class="tt" viewBox="0 0 24 24" aria-hidden="true">
           <mask id="tt-mask"><rect x="-4" y="-4" width="32" height="32" fill="#fff"/><circle class="tt-cut" cx="17" cy="7" r="7.5" fill="#000"/></mask>
           <circle class="tt-core" cx="12" cy="12" r="9" fill="currentColor" mask="url(#tt-mask)"/>
@@ -339,10 +369,13 @@ function renderMath(el) {
   if (window.renderMathInElement) {
     renderMathInElement(el, { delimiters: [
       { left: "$$", right: "$$", display: true }, { left: "\\[", right: "\\]", display: true },
-      { left: "\\(", right: "\\)", display: false } ], throwOnError: false });
+      { left: "$", right: "$", display: false }, { left: "\\(", right: "\\)", display: false } ],
+      throwOnError: false, ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code", "option"] });
   }
 }
 const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const T = {{ js_t | tojson }};
+const tr = (key, vars = {}) => (T[key] || key).replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
 
 (() => {
   const root = document.documentElement;
@@ -387,9 +420,16 @@ const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let s = Math.max(0, Math.floor((new Date(el.dataset.due) - Date.now()) / 1000));
     const d = Math.floor(s / 86400); s %= 86400;
     const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
-    el.innerHTML = (d ? `<b>${d}</b><i>kun</i>` : "") + `<b>${pad(h)}</b><i>:</i><b>${pad(m)}</b><i>:</i><b>${pad(sec)}</b>`;
+    el.innerHTML = (d ? `<b>${d}</b><i>${T.day_short}</i>` : "") + `<b>${pad(h)}</b><i>:</i><b>${pad(m)}</b><i>:</i><b>${pad(sec)}</b>`;
   });
   if (countdowns.length) { renderCountdowns(); setInterval(renderCountdowns, 1000); }
+
+  // language menu
+  const langBox = document.getElementById("lang"), langBtn = langBox.querySelector(".lang-btn");
+  const setLang = open => { langBox.classList.toggle("open", open); langBtn.setAttribute("aria-expanded", open); };
+  langBtn.addEventListener("click", e => { e.stopPropagation(); setLang(!langBox.classList.contains("open")); });
+  document.addEventListener("click", e => { if (!langBox.contains(e.target)) setLang(false); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") setLang(false); });
 
   // theme toggle: a wave spreads from the button; stars follow it into the night, a sun bursts at dawn
   const button = document.getElementById("theme");

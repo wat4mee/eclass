@@ -1,8 +1,6 @@
 {% extends "base.html" %}
-{% set LABELS = {"overdue": "Muddati o'tgan", "soon": "Yaqin", "upcoming": "Kutilmoqda",
-                 "nodate": "Muddatsiz", "done": "Topshirilgan"} %}
 {% set C = 376.99 %}
-{% block title %}Baholar · eClass Companion{% endblock %}
+{% block title %}{{ t('nav.grades') }} · eClass Companion{% endblock %}
 {% block style %}
 .g-hero { display: grid; grid-template-columns: auto 1fr; gap: 34px; align-items: center; padding: 30px; margin: 4px 0 20px; overflow: hidden; }
 .g-hero::after { content: ""; position: absolute; left: -100px; bottom: -160px; width: 360px; height: 360px; border-radius: 50%;
@@ -55,36 +53,36 @@
     </svg>
     <div class="center">
       {% if summary.avg is not none %}<b class="num" data-count="{{ summary.avg }}" data-suffix="%">{{ summary.avg }}%</b>{% else %}<b>—</b>{% endif %}
-      <span class="eyebrow">o'rtacha</span>
+      <span class="eyebrow">{{ t('grades.average') }}</span>
     </div>
   </div>
   <div>
-    <span class="eyebrow">Semestr natijalari</span>
-    <h1 class="display">Baholar va topshiriqlar</h1>
+    <span class="eyebrow">{{ t('grades.eyebrow') }}</span>
+    <h1 class="display">{{ t('grades.title') }}</h1>
     <div class="g-stats">
-      <div><b class="num" data-count="{{ summary.graded }}">{{ summary.graded }}</b><span>baholangan</span></div>
-      <div><b class="num" data-count="{{ summary.done }}">{{ summary.done }}</b><span>topshirilgan</span></div>
-      <div><b class="num" data-count="{{ summary.total }}">{{ summary.total }}</b><span>jami topshiriq</span></div>
+      <div><b class="num" data-count="{{ summary.graded }}">{{ summary.graded }}</b><span>{{ t('grades.graded') }}</span></div>
+      <div><b class="num" data-count="{{ summary.done }}">{{ summary.done }}</b><span>{{ t('grades.submitted') }}</span></div>
+      <div><b class="num" data-count="{{ summary.total }}">{{ summary.total }}</b><span>{{ t('grades.total') }}</span></div>
     </div>
   </div>
 </section>
 
 <section class="card rows reveal">
-  <div class="row head"><span>Kurs</span><span>Topshiriq</span><span>Muddat</span><span>Holat</span><span>Baho</span></div>
+  <div class="row head"><span>{{ t('col.course') }}</span><span>{{ t('col.assignment') }}</span><span>{{ t('col.due') }}</span><span>{{ t('col.status') }}</span><span>{{ t('col.grade') }}</span></div>
   {% for d in items %}
   <div class="row" style="--c: {{ course_color(d.course_id) }}; --i: {{ loop.index }}">
     <span class="course-cell"><span class="dot"></span>{{ d.course }}</span>
     <span class="task">
       <a href="{{ eclass_url }}/mod/assign/view.php?id={{ d.activity_id }}" target="_blank" rel="noopener">{{ d.name }}</a>
-      <small>{{ d.grading_status or "" }}</small>
+      <small>{{ status_label(d.grading_status) }}</small>
     </span>
-    <span class="small muted due num">{{ d.due | dt }}</span>
-    <span><span class="badge b-{{ d.state }}">{{ LABELS[d.state] }}</span></span>
+    <span class="small muted due num">{{ d.due | dt if d.due else t('assign.no_due') }}</span>
+    <span><span class="badge b-{{ d.state }}">{{ t('state.' ~ d.state) }}</span></span>
     <span class="grade-cell">
       {% if d.grade %}
       <span class="top"><b class="num">{{ d.grade }}</b>{% if d.pct is not none %}<span class="muted num">{{ d.pct }}%</span>{% endif %}</span>
       {% if d.pct is not none %}<span class="bar-track"><span style="--w: {{ d.pct }}%"></span></span>{% endif %}
-      {% else %}<span class="muted">Baholanmagan</span>{% endif %}
+      {% else %}<span class="muted">{{ t('grades.not_graded') }}</span>{% endif %}
     </span>
   </div>
   {% endfor %}

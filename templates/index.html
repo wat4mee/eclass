@@ -1,6 +1,5 @@
 {% extends "base.html" %}
-{% set LABELS = {"overdue": "Muddati o'tgan", "soon": "Yaqin", "upcoming": "Kutilmoqda",
-                 "nodate": "Muddatsiz", "done": "Topshirilgan"} %}
+
 {% set STATE_COLOR = {"overdue": "var(--bad)", "soon": "var(--warn)", "upcoming": "var(--accent-2)",
                       "nodate": "var(--idle)", "done": "var(--ok)"} %}
 {% set C = 376.99 %}
@@ -95,14 +94,14 @@
 <section class="hero">
   <div class="hero-text reveal">
     <span class="eyebrow">{{ today }}</span>
-    <h1 class="display">{{ greeting }},<br><em>o'qishga tayyormisiz?</em></h1>
+    <h1 class="display">{{ greeting }},<br><em>{{ t('home.tagline') }}</em></h1>
     <p class="lead">
-      {% if stats.pending %}<b>{{ stats.pending }} ta</b> topshiriq kutmoqda{% else %}Barcha topshiriqlar topshirilgan{% endif %}
-      · <b>{{ stats.packs }} ta</b> o'quv to'plami tayyor.
+      {% if stats.pending %}{{ t('home.pending', n=stats.pending, word=pl(stats.pending, 'assignment')) | safe }}{% else %}{{ t('home.all_done') }}{% endif %}
+      · {{ t('home.packs', n=stats.packs, word=pl(stats.packs, 'study_pack')) | safe }}
     </p>
     <div class="hero-actions">
-      <a class="btn accent" href="{{ url_for('ask_page') }}"><svg class="ico"><use href="#i-sparkles"/></svg>Kursdan so'ra</a>
-      <a class="btn" href="{{ url_for('grades') }}"><svg class="ico"><use href="#i-award"/></svg>Baholar</a>
+      <a class="btn accent" href="{{ url_for('ask_page') }}"><svg class="ico"><use href="#i-sparkles"/></svg>{{ t('nav.ai') }}</a>
+      <a class="btn" href="{{ url_for('grades') }}"><svg class="ico"><use href="#i-award"/></svg>{{ t('nav.grades') }}</a>
     </div>
   </div>
 
@@ -116,24 +115,24 @@
         <circle class="ring-val" cx="70" cy="70" r="60" style="--off: {{ '%.2f' % (C * (1 - d.ring)) }}"/>
       </svg>
       <div class="ring-center">
-        {% if d.days_left %}<span class="ring-num serif">{{ d.days_left }}</span><span class="eyebrow">kun</span>
-        {% else %}<span class="ring-num serif">{{ d.hours_left }}</span><span class="eyebrow">soat</span>{% endif %}
+        {% if d.days_left %}<span class="ring-num serif">{{ d.days_left }}</span><span class="eyebrow">{{ t('unit.days') }}</span>
+        {% else %}<span class="ring-num serif">{{ d.hours_left }}</span><span class="eyebrow">{{ t('unit.hours') }}</span>{% endif %}
       </div>
     </div>
     <div class="next-body">
-      <span class="eyebrow"><svg class="ico"><use href="#i-clock"/></svg>Keyingi muddat</span>
+      <span class="eyebrow"><svg class="ico"><use href="#i-clock"/></svg>{{ t('home.next_due') }}</span>
       <h2>{{ d.name }}</h2>
       <span class="chip" style="justify-self: start"><span class="dot"></span>{{ d.course }}</span>
       <div class="countdown num" data-due="{{ d.due_iso }}"></div>
-      <span class="muted small">{{ d.due | dt }} gacha</span>
+      <span class="muted small">{{ t('home.until', date=d.due | dt) }}</span>
     </div>
   </a>
   {% else %}
   <div class="card next reveal" style="--rc: var(--ok)">
     <div class="empty-state" style="width: 100%">
       <svg class="ico"><use href="#i-check"/></svg>
-      <strong style="color: var(--text); font-size: 18px">Yaqin muddatlar yo'q</strong>
-      <span>Yangi topshiriq chiqsa, shu yerda sanoq boshlanadi.</span>
+      <strong style="color: var(--text); font-size: 18px">{{ t('home.no_deadlines') }}</strong>
+      <span>{{ t('home.no_deadlines_hint') }}</span>
     </div>
   </div>
   {% endif %}
@@ -142,29 +141,29 @@
 <section class="stats">
   <div class="card stat reveal" style="--sc: var(--warn)">
     <span class="stat-ico"><svg class="ico lg"><use href="#i-task"/></svg></span>
-    <div><div class="stat-num num" data-count="{{ stats.pending }}">{{ stats.pending }}</div><div class="stat-label">Topshirilmagan</div></div>
+    <div><div class="stat-num num" data-count="{{ stats.pending }}">{{ stats.pending }}</div><div class="stat-label">{{ t('stat.pending') }}</div></div>
   </div>
   <div class="card stat reveal" style="--sc: var(--ok)">
     <span class="stat-ico"><svg class="ico lg"><use href="#i-award"/></svg></span>
     <div>
       {% if stats.avg is not none %}<div class="stat-num num" data-count="{{ stats.avg }}" data-suffix="%">{{ stats.avg }}%</div>
       {% else %}<div class="stat-num">—</div>{% endif %}
-      <div class="stat-label">O'rtacha baho</div>
+      <div class="stat-label">{{ t('stat.avg') }}</div>
     </div>
   </div>
   <div class="card stat reveal" style="--sc: var(--info)">
     <span class="stat-ico"><svg class="ico lg"><use href="#i-file"/></svg></span>
-    <div><div class="stat-num num" data-count="{{ stats.materials }}">{{ stats.materials }}</div><div class="stat-label">Materiallar</div></div>
+    <div><div class="stat-num num" data-count="{{ stats.materials }}">{{ stats.materials }}</div><div class="stat-label">{{ t('stat.materials') }}</div></div>
   </div>
   <div class="card stat reveal" style="--sc: var(--accent)">
     <span class="stat-ico"><svg class="ico lg"><use href="#i-sparkles"/></svg></span>
-    <div><div class="stat-num num" data-count="{{ stats.packs }}">{{ stats.packs }}</div><div class="stat-label">O'quv to'plamlari</div></div>
+    <div><div class="stat-num num" data-count="{{ stats.packs }}">{{ stats.packs }}</div><div class="stat-label">{{ t('stat.packs') }}</div></div>
   </div>
 </section>
 
 <div class="grid-3">
   <section class="card reveal">
-    <div class="card-title"><h2><svg class="ico"><use href="#i-task"/></svg>Topshiriqlar</h2><span class="muted small">topshirilmaganlar</span></div>
+    <div class="card-title"><h2><svg class="ico"><use href="#i-task"/></svg>{{ t('home.assignments') }}</h2><span class="muted small">{{ t('home.unsubmitted') }}</span></div>
     {% if pending %}
     <ol class="timeline">
       {% for d in pending %}
@@ -174,17 +173,17 @@
           <a href="{{ eclass_url }}/mod/assign/view.php?id={{ d.activity_id }}" target="_blank" rel="noopener">{{ d.name }}</a>
           <div class="meta"><span class="dot"></span>{{ d.course }}{% if d.due %} · {{ d.due | dt }}{% endif %}{% if d.left %} · <b style="color: var(--text)">{{ d.left }}</b>{% endif %}</div>
         </div>
-        <span class="badge b-{{ d.state }}">{{ LABELS[d.state] }}</span>
+        <span class="badge b-{{ d.state }}">{{ t('state.' ~ d.state) }}</span>
       </li>
       {% endfor %}
     </ol>
     {% else %}
-    <div class="empty-state"><svg class="ico"><use href="#i-check"/></svg>Hammasi topshirilgan</div>
+    <div class="empty-state"><svg class="ico"><use href="#i-check"/></svg>{{ t('home.everything_submitted') }}</div>
     {% endif %}
   </section>
 
   <section class="card reveal">
-    <div class="card-title"><h2><svg class="ico"><use href="#i-award"/></svg>Baholar</h2><a class="back" href="{{ url_for('grades') }}">Hammasi<svg class="ico"><use href="#i-arrow"/></svg></a></div>
+    <div class="card-title"><h2><svg class="ico"><use href="#i-award"/></svg>{{ t('nav.grades') }}</h2><a class="back" href="{{ url_for('grades') }}">{{ t('home.all') }}<svg class="ico"><use href="#i-arrow"/></svg></a></div>
     {% for d in graded %}
     <div class="grade" style="--c: {{ course_color(d.course_id) }}; --i: {{ loop.index }}">
       <div class="grade-top"><span class="grade-name">{{ d.name }}</span><b class="num">{{ d.pct }}%</b></div>
@@ -192,12 +191,12 @@
       <div class="meta" style="margin-top: 6px"><span class="dot"></span>{{ d.course }} · {{ d.grade }}</div>
     </div>
     {% else %}
-    <div class="empty-state"><svg class="ico"><use href="#i-clock"/></svg>Hali baho qo'yilmagan</div>
+    <div class="empty-state"><svg class="ico"><use href="#i-clock"/></svg>{{ t('home.no_grades') }}</div>
     {% endfor %}
   </section>
 
   <section class="card reveal">
-    <div class="card-title"><h2><svg class="ico"><use href="#i-file"/></svg>Yangi materiallar</h2></div>
+    <div class="card-title"><h2><svg class="ico"><use href="#i-file"/></svg>{{ t('home.new_materials') }}</h2></div>
     {% for m in materials %}
     <div class="mat" style="--c: {{ course_color(m.course_id) }}">
       <span class="ext ext-{{ m.filename | ext }}">{{ m.filename | ext }}</span>
@@ -205,13 +204,13 @@
         <a href="{{ url_for('file_view', file_id=m.id) }}" target="_blank" title="{{ m.filename }}">{{ m.activity }}</a>
         <div class="meta"><span class="dot"></span>{{ m.course }}</div>
       </div>
-      {% if m.has_study %}<a class="study-chip" href="{{ url_for('study_page', file_id=m.id) }}"><svg class="ico"><use href="#i-sparkles"/></svg>O'rganish</a>{% endif %}
+      {% if m.has_study %}<a class="study-chip" href="{{ url_for('study_page', file_id=m.id) }}"><svg class="ico"><use href="#i-sparkles"/></svg>{{ t('study.open') }}</a>{% endif %}
     </div>
     {% endfor %}
   </section>
 </div>
 
-<div class="section-head reveal"><h2>Kurslar</h2><span class="muted small">{{ course_list | length }} ta kurs</span></div>
+<div class="section-head reveal"><h2>{{ t('home.courses') }}</h2><span class="muted small">{{ course_list | length }} {{ pl(course_list | length, 'course') }}</span></div>
 <section class="courses">
   {% for c in course_list %}
   <a class="card lift course-card reveal" href="{{ url_for('course', course_id=c.id) }}" style="--c: {{ course_color(c.id) }}">
@@ -221,11 +220,11 @@
     <h3>{{ c.name }}</h3>
     <span class="muted small">{{ c.professor or "" }}</span>
     <div class="cc-stats">
-      <span><b class="num">{{ c.n_files }}</b> material</span>
-      <span><b class="num">{{ c.n_study }}</b> to'plam</span>
-      <span><b class="num">{{ c.n_assign }}</b> topshiriq</span>
+      <span><b class="num">{{ c.n_files }}</b> {{ pl(c.n_files, 'material') }}</span>
+      <span><b class="num">{{ c.n_study }}</b> {{ pl(c.n_study, 'pack') }}</span>
+      <span><b class="num">{{ c.n_assign }}</b> {{ pl(c.n_assign, 'assignment') }}</span>
     </div>
-    <div class="bar-track" title="O'quv to'plami tayyor materiallar"><span style="--w: {{ (100 * c.n_study / c.n_files) | round | int if c.n_files else 0 }}%"></span></div>
+    <div class="bar-track" title="{{ t('home.study_ready') }}"><span style="--w: {{ (100 * c.n_study / c.n_files) | round | int if c.n_files else 0 }}%"></span></div>
   </a>
   {% endfor %}
 </section>

@@ -1,9 +1,6 @@
 {% extends "base.html" %}
-{% set LABELS = {"overdue": "Muddati o'tgan", "soon": "Yaqin", "upcoming": "Kutilmoqda",
-                 "nodate": "Muddatsiz", "done": "Topshirilgan"} %}
-{% set TYPE = {"ubfile": ("i-file", "Fayl", "#60a5fa"), "folder": ("i-folder", "Papka", "#f59e0b"),
-               "url": ("i-play", "Video", "#f43f5e"), "assign": ("i-task", "Topshiriq", "#a78bfa"),
-               "ubboard": ("i-board", "Doska", "#94a3b8")} %}
+{% set TYPE = {"ubfile": ("i-file", "#60a5fa"), "folder": ("i-folder", "#f59e0b"), "url": ("i-play", "#f43f5e"),
+               "assign": ("i-task", "#a78bfa"), "ubboard": ("i-board", "#94a3b8")} %}
 {% block title %}{{ course.name }} · eClass Companion{% endblock %}
 {% block style %}
 html { scroll-behavior: smooth; }
@@ -61,18 +58,18 @@ a.act-name:hover { color: var(--accent); }
 {% endblock %}
 {% block content %}
 <section class="card course-hero reveal" style="--c: {{ course_color(course.id) }}">
-  <a class="back" href="{{ url_for('index') }}"><svg class="ico"><use href="#i-back"/></svg>Bosh sahifa</a>
+  <a class="back" href="{{ url_for('index') }}"><svg class="ico"><use href="#i-back"/></svg>{{ t('nav.home') }}</a>
   <div style="margin-top: 16px"><span class="eyebrow">{{ course.code or "" }}</span></div>
   <h1 class="display">{{ course.name }}</h1>
   <p class="muted">{{ course.professor or "" }}</p>
   <div class="hero-meta">
-    <span class="chip"><svg class="ico" style="width: 15px; height: 15px"><use href="#i-file"/></svg><b class="num" data-count="{{ course.n_files }}">{{ course.n_files }}</b> material</span>
-    <span class="chip"><svg class="ico" style="width: 15px; height: 15px"><use href="#i-sparkles"/></svg><b class="num" data-count="{{ course.n_study }}">{{ course.n_study }}</b> o'quv to'plami</span>
-    <span class="chip"><svg class="ico" style="width: 15px; height: 15px"><use href="#i-task"/></svg><b class="num" data-count="{{ course.n_assign }}">{{ course.n_assign }}</b> topshiriq</span>
+    <span class="chip"><svg class="ico" style="width: 15px; height: 15px"><use href="#i-file"/></svg><b class="num" data-count="{{ course.n_files }}">{{ course.n_files }}</b> {{ pl(course.n_files, 'material') }}</span>
+    <span class="chip"><svg class="ico" style="width: 15px; height: 15px"><use href="#i-sparkles"/></svg><b class="num" data-count="{{ course.n_study }}">{{ course.n_study }}</b> {{ pl(course.n_study, 'study_pack') }}</span>
+    <span class="chip"><svg class="ico" style="width: 15px; height: 15px"><use href="#i-task"/></svg><b class="num" data-count="{{ course.n_assign }}">{{ course.n_assign }}</b> {{ pl(course.n_assign, 'assignment') }}</span>
   </div>
   <div class="hero-actions">
-    <a class="btn accent" href="{{ url_for('ask_page', course=course.id) }}"><svg class="ico"><use href="#i-sparkles"/></svg>Shu kursdan so'ra</a>
-    <a class="btn" href="{{ eclass_url }}/course/view.php?id={{ course.id }}" target="_blank" rel="noopener">eClass'da ochish<svg class="ico"><use href="#i-external"/></svg></a>
+    <a class="btn accent" href="{{ url_for('ask_page', course=course.id) }}"><svg class="ico"><use href="#i-sparkles"/></svg>{{ t('course.ask') }}</a>
+    <a class="btn" href="{{ eclass_url }}/course/view.php?id={{ course.id }}" target="_blank" rel="noopener">{{ t('course.open_eclass') }}<svg class="ico"><use href="#i-external"/></svg></a>
   </div>
 </section>
 
@@ -88,15 +85,15 @@ a.act-name:hover { color: var(--accent); }
   <header class="week-head">
     <span class="wk-num">{{ info.title }}</span>
     {% if info.range %}<span class="muted small">{{ info.range }}</span>{% endif %}
-    {% if info.current %}<span class="now-badge">Joriy hafta</span>{% endif %}
+    {% if info.current %}<span class="now-badge">{{ t('week.current') }}</span>{% endif %}
   </header>
   <ul class="acts">
     {% for a in acts %}
-    {% set t = TYPE.get(a.type, ("i-file", a.type, "#94a3b8")) %}
-    <li class="act" style="--tc: {{ t[2] }}">
-      <span class="act-ico"><svg class="ico lg"><use href="#{{ t[0] }}"/></svg></span>
+    {% set ty = TYPE.get(a.type, ("i-file", "#94a3b8")) %}
+    <li class="act" style="--tc: {{ ty[1] }}">
+      <span class="act-ico"><svg class="ico lg"><use href="#{{ ty[0] }}"/></svg></span>
       <div style="min-width: 0">
-        <span class="kind">{{ t[1] }}</span>
+        <span class="kind">{{ t('type.' ~ a.type) if ('type.' ~ a.type) in ['type.ubfile', 'type.folder', 'type.url', 'type.assign', 'type.ubboard'] else a.type }}</span>
         <div class="act-top">
           {% if a.type == "url" %}
             <a class="act-name" href="{{ a.url }}" target="_blank" rel="noopener">{{ a.name }}<svg class="ico"><use href="#i-external"/></svg></a>
@@ -105,7 +102,7 @@ a.act-name:hover { color: var(--accent); }
           {% elif a.type == "assign" %}
             <a class="act-name" href="{{ eclass_url }}/mod/assign/view.php?id={{ a.id }}" target="_blank" rel="noopener">{{ a.name }}<svg class="ico"><use href="#i-external"/></svg></a>
             {% set d = assigns.get(a.id) %}
-            {% if d %}<span class="badge b-{{ d.state }}">{{ LABELS[d.state] }}</span>{% endif %}
+            {% if d %}<span class="badge b-{{ d.state }}">{{ t('state.' ~ d.state) }}</span>{% endif %}
           {% else %}
             <span class="act-name">{{ a.name }}</span>
           {% endif %}
@@ -114,8 +111,8 @@ a.act-name:hover { color: var(--accent); }
           {% set d = assigns.get(a.id) %}
           {% if d %}
           <div class="meta">
-            {% if d.due %}Muddat: {{ d.due | dt }}{% if d.left %} · <b style="color: var(--text)">{{ d.left }} qoldi</b>{% endif %}{% else %}Muddat ko'rsatilmagan{% endif %}
-            {% if d.grade %} · Baho: <b style="color: var(--text)">{{ d.grade }}</b>{% endif %}
+            {% if d.due %}{{ t('assign.due', date=d.due | dt) }}{% if d.left %} · <b style="color: var(--text)">{{ t('assign.left', t=d.left) }}</b>{% endif %}{% else %}{{ t('assign.no_due') }}{% endif %}
+            {% if d.grade %} · {{ t('assign.grade', g='') }}<b style="color: var(--text)">{{ d.grade }}</b>{% endif %}
           </div>
           {% endif %}
         {% endif %}
@@ -126,7 +123,7 @@ a.act-name:hover { color: var(--accent); }
             <span class="ext ext-{{ f.filename | ext }}">{{ f.filename | ext }}</span>
             <a class="fname" href="{{ url_for('file_view', file_id=f.id) }}" target="_blank" title="{{ f.filename }}">{{ f.filename }}</a>
             <span class="muted small size">{{ f.size | size }}</span>
-            {% if f.has_study %}<a class="study-chip" href="{{ url_for('study_page', file_id=f.id) }}"><svg class="ico"><use href="#i-sparkles"/></svg>O'rganish</a>{% endif %}
+            {% if f.has_study %}<a class="study-chip" href="{{ url_for('study_page', file_id=f.id) }}"><svg class="ico"><use href="#i-sparkles"/></svg>{{ t('study.open') }}</a>{% endif %}
           </li>
           {% endfor %}
         </ul>

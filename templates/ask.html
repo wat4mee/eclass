@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Kursdan so'ra · eClass Companion{% endblock %}
+{% block title %}{{ t('nav.ai') }} · eClass Companion{% endblock %}
 {% block style %}
 .ask { max-width: 860px; margin: 0 auto; }
 .ask-head { text-align: center; margin: 6px 0 18px; }
@@ -31,15 +31,19 @@
 @keyframes msg-in { from { opacity: 0; transform: translateY(14px) scale(.97); } }
 .msg.user { justify-content: flex-end; }
 .msg.user .bubble { background: var(--text); color: var(--bg); border-radius: 20px 20px 6px 20px; padding: 12px 18px;
-  max-width: 78%; font-weight: 600; transform-origin: bottom right; }
+  max-width: 78%; font-weight: 600; overflow-wrap: anywhere; }
 .avatar { width: 38px; height: 38px; flex: none; border-radius: 13px; display: grid; place-items: center; color: #0b0d12;
   background: conic-gradient(from 210deg, var(--accent), var(--accent-2), var(--accent)); }
 .avatar .ico { stroke-width: 2.2; }
 .msg.bot .bubble { flex: 1; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 6px 20px 20px 20px;
   padding: 16px 20px; box-shadow: var(--shadow); }
+.bot-name { font-size: 12px; font-weight: 800; letter-spacing: .06em; color: var(--accent); margin-bottom: 6px; }
 .answer p { margin: 0 0 12px; line-height: 1.75; color: var(--text-2); animation: rise .6s var(--ease) both; }
 .answer p:last-child { margin-bottom: 0; }
 .answer strong { color: var(--text); }
+.answer .katex { font-size: 1.08em; }
+.answer .katex-display { margin: 10px 0; overflow-x: auto; overflow-y: hidden; }
+.answer.not-found p { color: var(--muted); }
 .cite { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; margin: 0 2px; border-radius: 6px;
   font-size: 11px; font-weight: 800; vertical-align: 2px; color: var(--accent-ink); background: var(--accent); cursor: pointer;
   transition: transform .3s var(--spring); }
@@ -66,7 +70,9 @@
 .src-body { padding: 0 12px 12px 46px; }
 .snippet { font-size: 13px; color: var(--muted); line-height: 1.6; margin: 0 0 10px; }
 .src-body .btn { padding: 7px 12px; font-size: 13px; }
-.error { color: var(--bad); font-weight: 700; }
+.error { display: grid; gap: 10px; justify-items: start; }
+.error p { color: var(--bad); font-weight: 700; margin: 0; }
+.error .btn { padding: 8px 14px; font-size: 13px; }
 
 .composer { position: sticky; bottom: 18px; display: flex; align-items: flex-end; gap: 10px; padding: 10px 10px 10px 18px;
   border-radius: 22px; border: 1px solid var(--line-strong); box-shadow: var(--shadow-lg);
@@ -87,13 +93,13 @@ kbd { font: 700 11px var(--font); padding: 2px 7px; border-radius: 6px; border: 
 {% block content %}
 <section class="ask">
   <header class="ask-head reveal">
-    <span class="eyebrow">AI yordamchi</span>
-    <h1 class="display">Kursdan <em>so'ra</em></h1>
-    <p class="muted">Javoblar faqat ma'ruza va darsliklardan olinadi, manbasi sahifasi bilan ko'rsatiladi.</p>
+    <span class="eyebrow">{{ t('ask.eyebrow') }}</span>
+    <h1 class="display">Shahzod <em>AI</em></h1>
+    <p class="muted">{{ t('ask.subtitle') }}</p>
   </header>
 
   <div class="scope reveal" id="scope">
-    <button class="pill all {{ 'on' if not selected }}" type="button" data-course="">Barcha kurslar</button>
+    <button class="pill all {{ 'on' if not selected }}" type="button" data-course="">{{ t('ask.all_courses') }}</button>
     {% for c in course_list %}
     <button class="pill {{ 'on' if c.id == selected }}" type="button" data-course="{{ c.id }}" style="--c: {{ course_color(c.id) }}"><span class="dot"></span>{{ c.name }}</button>
     {% endfor %}
@@ -102,39 +108,43 @@ kbd { font: 700 11px var(--font); padding: 2px 7px; border-radius: 6px; border: 
   <div class="chat" id="chat">
     <div class="welcome reveal" id="welcome">
       <div class="orb"><svg class="ico"><use href="#i-sparkles"/></svg></div>
-      <p class="muted">Istalgan mavzuni o'zbekcha so'rang. Masalan:</p>
+      <p class="muted">{{ t('ask.welcome') }}</p>
       <div class="suggest" id="suggest"></div>
     </div>
   </div>
 
   <form class="composer" id="ask">
-    <textarea id="question" rows="1" maxlength="1000" placeholder="Savolingizni yozing…" required></textarea>
-    <button class="send" id="send" type="submit" aria-label="Yuborish"><svg class="ico"><use href="#i-send"/></svg></button>
+    <textarea id="question" rows="1" maxlength="1000" placeholder="{{ t('ask.placeholder') }}" required></textarea>
+    <button class="send" id="send" type="submit" aria-label="{{ t('ask.send') }}"><svg class="ico"><use href="#i-send"/></svg></button>
   </form>
-  <p class="keys"><kbd>Enter</kbd> yuborish · <kbd>Shift</kbd>+<kbd>Enter</kbd> yangi qator</p>
+  <p class="keys">{{ t('ask.keys') | safe }}</p>
 </section>
 {% endblock %}
 {% block script %}
 <script>
 (() => {
   const SUGGEST = {{ suggestions | tojson }};
-  const esc = s => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const TIMEOUT_MS = 90000;
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const shorten = (s, n = 40) => s.length > n ? s.slice(0, n - 1) + "…" : s;
   const chat = document.getElementById("chat"), question = document.getElementById("question");
   const send = document.getElementById("send");
-  let course = "{{ selected or '' }}", counter = 0;
+  const history = [];          // [{q, a}] of this conversation; the server uses the last few turns
+  let course = "{{ selected or '' }}", counter = 0, busy = false;
 
   // ---- course scope pills + suggestions
   const renderSuggestions = () => {
     const box = document.getElementById("suggest");
     if (!box) return;
-    box.innerHTML = (SUGGEST[course] || SUGGEST[""] || []).map((t, i) =>
-      `<button class="sugg" type="button" style="animation-delay:${i * 70}ms">${esc(t)} nima?</button>`).join("");
+    box.innerHTML = (SUGGEST[course] || SUGGEST[""] || []).map((term, i) =>
+      `<button class="sugg" type="button" style="animation-delay:${i * 70}ms">${esc(tr("suggest", { t: term }))}</button>`).join("");
     box.querySelectorAll(".sugg").forEach(b => b.onclick = () => { question.value = b.textContent; submit(); });
   };
   document.querySelectorAll("#scope .pill").forEach(p => p.addEventListener("click", () => {
     document.querySelectorAll("#scope .pill").forEach(x => x.classList.toggle("on", x === p));
     course = p.dataset.course;
-    history.replaceState(null, "", course ? `?course=${course}` : location.pathname);
+    history.length = 0;       // a new course starts a new conversation
+    window.history.replaceState(null, "", course ? `?course=${course}` : location.pathname);
     renderSuggestions();
   }));
   renderSuggestions();
@@ -147,50 +157,60 @@ kbd { font: 700 11px var(--font); padding: 2px 7px; border-radius: 6px; border: 
   });
   document.getElementById("ask").addEventListener("submit", e => { e.preventDefault(); submit(); });
 
-  const formatAnswer = (text, id) => esc(text).split(/\n{2,}/).map((p, i) =>
-    `<p style="animation-delay:${i * 110}ms">` + p
-      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/\n/g, "<br>")
-      .replace(/\[(\d+)\]/g, `<a class="cite" href="#${id}-src-$1" data-src="${id}-src-$1">$1</a>`) + "</p>").join("");
+  const formatAnswer = (text, id) => esc(text)
+    .replace(/\$\$([\s\S]+?)\$\$/g, m => m.replace(/\n/g, " "))   // keep display formulas in one text node
+    .split(/\n{2,}/).map((p, i) =>
+      `<p style="animation-delay:${i * 110}ms">` + p
+        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+        .replace(/\n/g, "<br>")
+        .replace(/\[(\d+)\]/g, `<a class="cite" href="#${id}-src-$1" data-src="${id}-src-$1">$1</a>`) + "</p>").join("");
 
+  const pageLabel = s => s.pages && s.pages.length > 1 ? tr("pages", { n: s.pages.join(", ") }) : tr("page", { n: s.page });
   const renderSources = (sources, id) => !sources.length ? "" : `<div class="sources">${sources.map(s => `
     <details class="src" id="${id}-src-${s.n}">
-      <summary><span class="src-n">${s.n}</span><span class="src-title">${esc(s.filename)}</span>
-        <span class="src-page">${s.page}-bet</span><svg class="ico chev"><use href="#i-right"/></svg></summary>
+      <summary><span class="src-n">${s.n}</span><span class="src-title" title="${esc(s.filename)}">${esc(shorten(s.filename))}</span>
+        <span class="src-page">${esc(pageLabel(s))}</span><svg class="ico chev"><use href="#i-right"/></svg></summary>
       <div class="src-body">
         <p class="snippet">${esc(s.text.replace(/\s+/g, " ").slice(0, 420))}${s.text.length > 420 ? "…" : ""}</p>
-        <a class="btn" href="/file/${s.file_id}#page=${s.page}" target="_blank">Manbani ochish<svg class="ico"><use href="#i-external"/></svg></a>
+        <a class="btn" href="/file/${s.file_id}#page=${s.page}" target="_blank">${esc(T.open_source)}<svg class="ico"><use href="#i-external"/></svg></a>
       </div>
     </details>`).join("")}</div>`;
 
   const scrollDown = el => el.scrollIntoView({ behavior: REDUCED_MOTION ? "auto" : "smooth", block: "end" });
+  const typing = () => `<div class="bot-name">Shahzod AI</div><div class="typing"><span></span><span></span><span></span></div>
+    <div class="status">${esc(T.searching)}</div>`;
 
-  async function submit() {
+  function submit() {
     const text = question.value.trim();
-    if (!text || send.disabled) return;
+    if (!text || busy) return;
     document.getElementById("welcome")?.remove();
     const id = "qa" + (++counter);
     chat.insertAdjacentHTML("beforeend", `<div class="msg user"><div class="bubble">${esc(text)}</div></div>`);
-    chat.insertAdjacentHTML("beforeend", `
-      <div class="msg bot" id="${id}">
-        <div class="avatar"><svg class="ico"><use href="#i-sparkles"/></svg></div>
-        <div class="bubble"><div class="typing"><span></span><span></span><span></span></div>
-          <div class="status">Materiallar qidirilmoqda…</div></div>
-      </div>`);
+    chat.insertAdjacentHTML("beforeend", `<div class="msg bot" id="${id}">
+      <div class="avatar"><svg class="ico"><use href="#i-sparkles"/></svg></div><div class="bubble"></div></div>`);
+    question.value = ""; grow();
+    ask(text, id, history.slice(-4));
+  }
+
+  async function ask(text, id, turns) {
     const bot = document.getElementById(id), bubble = bot.querySelector(".bubble");
+    bubble.innerHTML = typing();
     scrollDown(bot);
-    question.value = ""; grow(); send.disabled = true;
-    const phase = setTimeout(() => { const s = bubble.querySelector(".status"); if (s) s.textContent = "Javob yozilmoqda…"; }, 1600);
+    busy = true; send.disabled = true;
+    const phase = setTimeout(() => { const s = bubble.querySelector(".status"); if (s) s.textContent = T.writing; }, 1600);
+    const abort = new AbortController(), timer = setTimeout(() => abort.abort(), TIMEOUT_MS);
     try {
       const response = await fetch("/api/ask", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: text, course_id: course || null }),
+        method: "POST", headers: { "Content-Type": "application/json" }, signal: abort.signal,
+        body: JSON.stringify({ question: text, course_id: course || null, history: turns }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || response.statusText);
-      bubble.innerHTML = `<div class="answer">${formatAnswer(data.answer, id)}</div>
-        <div class="query"><svg class="ico"><use href="#i-target"/></svg>Qidiruv: ${esc(data.query || "")}</div>
-        ${renderSources(data.sources, id)}`;
+      let data;
+      try { data = await response.json(); } catch (e) { throw new Error(T.network); }
+      if (!response.ok) throw new Error(data.error || T.network);
+      bubble.innerHTML = `<div class="bot-name">Shahzod AI</div>
+        <div class="answer ${data.found ? "" : "not-found"}">${formatAnswer(data.answer, id)}</div>
+        ${data.found && data.query ? `<div class="query"><svg class="ico"><use href="#i-target"/></svg>${esc(T.query)}: ${esc(data.query)}</div>` : ""}
+        ${data.found ? renderSources(data.sources || [], id) : ""}`;
       renderMath(bubble);
       bubble.querySelectorAll(".cite").forEach(a => a.addEventListener("click", e => {
         e.preventDefault();
@@ -201,11 +221,15 @@ kbd { font: 700 11px var(--font); padding: 2px 7px; border-radius: 6px; border: 
         src.classList.remove("flash"); void src.offsetWidth; src.classList.add("flash");
         setTimeout(() => src.classList.remove("flash"), 1400);
       }));
+      history.push({ q: text, a: data.answer.replace(/\[\d+\]/g, "") });
     } catch (err) {
-      bubble.innerHTML = `<p class="error">${esc(err.message)}</p>`;
+      const message = err.name === "AbortError" ? T.timeout : err instanceof TypeError ? T.network : err.message;
+      bubble.innerHTML = `<div class="bot-name">Shahzod AI</div><div class="error"><p>${esc(message)}</p>
+        <button class="btn" type="button"><svg class="ico"><use href="#i-flip"/></svg>${esc(T.retry)}</button></div>`;
+      bubble.querySelector(".error .btn").onclick = () => ask(text, id, turns);
     } finally {
-      clearTimeout(phase);
-      send.disabled = false;
+      clearTimeout(phase); clearTimeout(timer);
+      busy = false; send.disabled = false;
       question.focus();
       scrollDown(bot);
     }

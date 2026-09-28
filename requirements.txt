@@ -8,3 +8,4 @@ ocrmac; sys_platform == "darwin"
 fastembed
 numpy
 flask
+playwright

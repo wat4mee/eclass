@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% set C = 339.29 %}
-{% block title %}{{ s.activity }} · o'rganish{% endblock %}
+{% block title %}{{ s.activity }} · {{ t('study.suffix') }}{% endblock %}
 {% block style %}
 .study-hero { margin: 4px 0 24px; }
 .study-hero .display { font-size: clamp(38px, 5.5vw, 58px); margin: 12px 0 12px; }
@@ -106,6 +106,12 @@ kbd { font: 700 11px var(--font); padding: 2px 7px; border-radius: 6px; border: 
 .score-num { position: absolute; inset: 0; display: grid; place-content: center; font-family: var(--display); font-size: 52px; line-height: 1; }
 .score-num small { font-size: 22px; color: var(--muted); }
 .result-msg { font-size: 20px; font-weight: 800; }
+.translating { display: flex; align-items: center; gap: 14px; padding: 14px 18px; margin-bottom: 18px; border-radius: 16px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+.translating .spin { width: 22px; height: 22px; border-radius: 50%; flex: none; border: 3px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-top-color: var(--accent); animation: spin .8s linear infinite; }
+.translating.failed .spin { display: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .confetti { position: fixed; top: 42vh; width: 9px; height: 15px; border-radius: 3px; z-index: 100; pointer-events: none; }
 
 @media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
@@ -129,17 +135,23 @@ kbd { font: 700 11px var(--font); padding: 2px 7px; border-radius: 6px; border: 
 <div class="seg-wrap reveal">
   <div class="segs" role="tablist">
     <span class="seg-ind"></span>
-    <button class="seg on" type="button" data-tab="summary"><svg class="ico"><use href="#i-book"/></svg>Mazmun</button>
-    <button class="seg" type="button" data-tab="cards"><svg class="ico"><use href="#i-layers"/></svg>Kartalar<span class="cnt">{{ flashcards | length }}</span></button>
-    <button class="seg" type="button" data-tab="quiz"><svg class="ico"><use href="#i-target"/></svg>Test<span class="cnt">{{ quiz | length }}</span></button>
+    <button class="seg on" type="button" data-tab="summary"><svg class="ico"><use href="#i-book"/></svg>{{ t('study.tab.summary') }}</button>
+    <button class="seg" type="button" data-tab="cards"><svg class="ico"><use href="#i-layers"/></svg>{{ t('study.tab.cards') }}<span class="cnt">{{ flashcards | length }}</span></button>
+    <button class="seg" type="button" data-tab="quiz"><svg class="ico"><use href="#i-target"/></svg>{{ t('study.tab.quiz') }}<span class="cnt">{{ quiz | length }}</span></button>
   </div>
 </div>
 
+{% if translating %}
+<div class="translating reveal" id="translating">
+  <span class="spin"></span>
+  <div><strong id="tr-title">{{ t('study.translating') }}</strong><div class="muted small" id="tr-hint">{{ t('study.translating_hint') }}</div></div>
+</div>
+{% endif %}
 <section class="panel on" id="p-summary">
   <div class="two">
     <article class="card summary reveal" id="summary">
-      <div class="card-title"><h2><svg class="ico"><use href="#i-book"/></svg>Qisqa mazmun</h2></div>
-      {% for para in s.summary.split("\n") if para.strip() %}<p>{{ para }}</p>{% endfor %}
+      <div class="card-title"><h2><svg class="ico"><use href="#i-book"/></svg>{{ t('study.summary') }}</h2></div>
+      {% for para in summary.split("\n") if para.strip() %}<p>{{ para }}</p>{% endfor %}
     </article>
     <div class="concepts">
       {% for c in concepts %}
@@ -156,12 +168,12 @@ kbd { font: 700 11px var(--font); padding: 2px 7px; border-radius: 6px; border: 
       <button class="fcard {{ 'active' if loop.first }}" type="button" aria-label="Kartani aylantirish">
         <span class="fcard-inner">
           <span class="face face-front">
-            <span class="eyebrow">Savol · {{ loop.index }}</span>
+            <span class="eyebrow">{{ t('study.question_n', n=loop.index) }}</span>
             <span class="fc-text">{{ c.front }}</span>
-            <span class="hint"><svg class="ico"><use href="#i-flip"/></svg>Javobni ko'rish uchun bosing</span>
+            <span class="hint"><svg class="ico"><use href="#i-flip"/></svg>{{ t('study.flip_hint') }}</span>
           </span>
           <span class="face face-back">
-            <span class="eyebrow">Javob</span>
+            <span class="eyebrow">{{ t('study.answer') }}</span>
             <span class="fc-text">{{ c.back }}</span>
           </span>
         </span>
@@ -169,18 +181,18 @@ kbd { font: 700 11px var(--font); padding: 2px 7px; border-radius: 6px; border: 
       {% endfor %}
     </div>
     <div class="deck-controls">
-      <button class="icon-btn" type="button" id="prev" aria-label="Oldingi"><svg class="ico"><use href="#i-left"/></svg></button>
+      <button class="icon-btn" type="button" id="prev" aria-label="{{ t('study.prev') }}"><svg class="ico"><use href="#i-left"/></svg></button>
       <span class="deck-count num"><b id="cur">1</b> / {{ flashcards | length }}</span>
-      <button class="icon-btn" type="button" id="next" aria-label="Keyingi"><svg class="ico"><use href="#i-right"/></svg></button>
+      <button class="icon-btn" type="button" id="next" aria-label="{{ t('study.next') }}"><svg class="ico"><use href="#i-right"/></svg></button>
     </div>
     <div class="progress"><span id="deckbar"></span></div>
-    <p class="keys"><kbd>←</kbd> <kbd>→</kbd> almashtirish · <kbd>Space</kbd> aylantirish · telefonda suring</p>
+    <p class="keys">{{ t('study.keys') | safe }}</p>
   </div>
 </section>
 
 <section class="panel" id="p-quiz">
   <div class="card quiz" id="quiz">
-    <div class="quiz-top"><span class="eyebrow" id="qlabel">Savol 1 / {{ quiz | length }}</span><span class="chip num" id="qscore">0 to'g'ri</span></div>
+    <div class="quiz-top"><span class="eyebrow" id="qlabel"></span><span class="chip num" id="qscore"></span></div>
     <div class="progress"><span id="qbar"></span></div>
     {% for q in quiz %}
     <div class="qcard {{ 'active' if loop.first }}" data-answer="{{ q.answer_index }}">
@@ -196,7 +208,7 @@ kbd { font: 700 11px var(--font); padding: 2px 7px; border-radius: 6px; border: 
       <div class="explain"><div><div class="inner"><svg class="ico"><use href="#i-sparkles"/></svg><span>{{ q.explanation }}</span></div></div></div>
     </div>
     {% endfor %}
-    <div class="q-actions" id="qactions"><button class="btn accent" type="button" id="qnext" disabled>Keyingi savol<svg class="ico"><use href="#i-arrow"/></svg></button></div>
+    <div class="q-actions" id="qactions"><button class="btn accent" type="button" id="qnext" disabled>{{ t('study.next_question') }}<svg class="ico"><use href="#i-arrow"/></svg></button></div>
     <div class="qresult" id="qresult">
       <div class="score-ring">
         <svg viewBox="0 0 130 130" aria-hidden="true">
@@ -206,7 +218,7 @@ kbd { font: 700 11px var(--font); padding: 2px 7px; border-radius: 6px; border: 
         <div class="score-num"><span><span id="rnum">0</span><small>/{{ quiz | length }}</small></span></div>
       </div>
       <p class="result-msg" id="rmsg"></p>
-      <button class="btn primary" type="button" id="qrestart"><svg class="ico"><use href="#i-flip"/></svg>Qaytadan</button>
+      <button class="btn primary" type="button" id="qrestart"><svg class="ico"><use href="#i-flip"/></svg>{{ t('study.restart') }}</button>
     </div>
   </div>
 </section>
@@ -274,8 +286,8 @@ kbd { font: 700 11px var(--font); padding: 2px 7px; border-radius: 6px; border: 
   const qscore = document.getElementById("qscore"), qbar = document.getElementById("qbar");
   let q = 0, right = 0;
   const updateTop = () => {
-    qlabel.textContent = q < total ? `Savol ${q + 1} / ${total}` : "Natija";
-    qscore.textContent = `${right} to'g'ri`;
+    qlabel.textContent = q < total ? tr("q_of", { i: q + 1, n: total }) : T.result;
+    qscore.textContent = tr("correct", { n: right });
     qbar.style.width = (Math.min(q, total) / total * 100) + "%";
   };
   qcards.forEach(card => card.querySelectorAll(".opt").forEach(opt => opt.addEventListener("click", () => {
@@ -288,7 +300,7 @@ kbd { font: 700 11px var(--font); padding: 2px 7px; border-radius: 6px; border: 
     });
     if (picked === answer) right++;
     card.classList.add("answered");
-    qscore.textContent = `${right} to'g'ri`;
+    qscore.textContent = tr("correct", { n: right });
     qnext.disabled = false;
     qnext.focus({ preventScroll: true });
   })));
@@ -310,9 +322,7 @@ kbd { font: 700 11px var(--font); padding: 2px 7px; border-radius: 6px; border: 
     const step = () => { num.textContent = n; if (n++ < right) setTimeout(step, 1400 / Math.max(right, 1)); };
     step();
     document.getElementById("rmsg").textContent =
-      right === total ? "Mukammal! Hammasi to'g'ri 🎉"
-      : right >= total * .6 ? "Yaxshi natija! Yana bir urinib ko'ring."
-      : "Mazmunni yana bir ko'rib chiqing, keyin qayta urining.";
+      right === total ? T.perfect : right >= total * .6 ? T.good : T.low;
     if (right === total) setTimeout(confetti, 700);
   }
   document.getElementById("qrestart").addEventListener("click", () => {
@@ -351,6 +361,22 @@ kbd { font: 700 11px var(--font); padding: 2px 7px; border-radius: 6px; border: 
   }
 
   window.addEventListener("load", () => renderMath(document.querySelector("main")));
+
+  // no pack in this language yet: translate it in the background, then show it
+  const banner = document.getElementById("translating");
+  if (banner) {
+    fetch("/api/translate/{{ s.file_id }}", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+      .then(r => r.json().then(d => ({ ok: r.ok, d })))
+      .then(({ ok, d }) => {
+        if (ok) return location.replace(location.href);
+        throw new Error(d.error || "");
+      })
+      .catch(err => {
+        banner.classList.add("failed");
+        document.getElementById("tr-title").textContent = T.translate_failed;
+        document.getElementById("tr-hint").textContent = err.message || T.network;
+      });
+  }
 })();
 </script>
 {% endblock %}

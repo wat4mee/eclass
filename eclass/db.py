@@ -112,6 +112,18 @@ CREATE INDEX IF NOT EXISTS chunks_file ON chunks(file_id);
 -- keyword index; rowid = chunks.id
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(text, tokenize = 'porter unicode61');
 
+CREATE TABLE IF NOT EXISTS study_i18n (   -- study packs translated for the dashboard language
+    file_id     INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    language    TEXT NOT NULL,
+    sha256      TEXT NOT NULL,            -- version of the source pack's file
+    summary     TEXT NOT NULL,
+    concepts    TEXT NOT NULL,
+    flashcards  TEXT NOT NULL,
+    quiz        TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    PRIMARY KEY (file_id, language)
+);
+
 CREATE TABLE IF NOT EXISTS index_state (  -- progress per file, so long textbooks resume mid-way
     file_id    INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
     sha256     TEXT NOT NULL,
@@ -262,4 +274,17 @@ def save_study(conn, file_id, sha256, provider, model, language, result):
          json.dumps(result["quiz"], ensure_ascii=False), now()),
     )
     conn.execute("DELETE FROM study_notes WHERE file_id = ?", (file_id,))
+    conn.commit()
+
+
+def save_translation(conn, file_id, language, sha256, result):
+    conn.execute(
+        """INSERT OR REPLACE INTO study_i18n
+               (file_id, language, sha256, summary, concepts, flashcards, quiz, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (file_id, language, sha256, result["summary"],
+         json.dumps(result["key_concepts"], ensure_ascii=False),
+         json.dumps(result["flashcards"], ensure_ascii=False),
+         json.dumps(result["quiz"], ensure_ascii=False), now()),
+    )
     conn.commit()

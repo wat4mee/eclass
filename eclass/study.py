@@ -5,6 +5,7 @@ first condensed chunk by chunk into English notes (map), and the study pack is
 generated from those notes (reduce). Chunk notes are stored, so a run that hits
 the daily quota resumes where it stopped.
 """
+import json
 import os
 
 from . import db
@@ -63,6 +64,9 @@ def study_system(language):
         "parentheses where it helps. Use only what is in the material - never invent topics; "
         "every flashcard and quiz question must be answerable from the material itself. "
         "The text may come from OCR: silently repair broken formulas when the intent is clear.\n"
+        "Write every formula in LaTeX inside $...$ (e.g. $\\lim_{x \\to a} f(x) = L$, $\\frac{dy}{dx}$). "
+        "Write naturally, not word for word; keep technical terms such as limit, derivative, class in English; "
+        "in Uzbek use correct Latin-script forms (e.g. 'ingliz matematigi', o' and g' with apostrophes).\n"
         "Produce:\n"
         "- summary: 120-250 words, the main ideas in logical order\n"
         "- key_concepts: 5-8 items, each a term and a 1-2 sentence explanation\n"
@@ -187,3 +191,28 @@ def generate_pending(conn, provider, limit=None, force=False, log=print):
             stats["failed"] += 1
             log(f"      FAIL {type(exc).__name__}: {exc}")
     return stats
+
+
+TRANSLATE_SYSTEM = (
+    "You translate a university study pack, given as JSON, into {language}. Translate every string value "
+    "naturally rather than word for word; keep technical terms, code, numbers and formulas unchanged "
+    "(formulas stay inside $...$ if present). Keep the same number of items, the same option order and the "
+    "same answer_index values. Do not add, drop or merge content."
+)
+
+
+def translate_pack(conn, provider, file_id, code):
+    """Translate a stored study pack into another dashboard language and cache it."""
+    row = conn.execute("SELECT * FROM study WHERE file_id = ?", (file_id,)).fetchone()
+    if row is None:
+        raise LookupError(f"no study pack for file {file_id}")
+    pack = {"summary": row["summary"], "key_concepts": json.loads(row["concepts"]),
+            "flashcards": json.loads(row["flashcards"]), "quiz": json.loads(row["quiz"])}
+    result = provider.complete_json(
+        TRANSLATE_SYSTEM.format(language=LANGUAGES.get(code, code)),
+        json.dumps(pack, ensure_ascii=False), STUDY_SCHEMA, max_tokens=4500)
+    for new, old in zip(result["quiz"], pack["quiz"]):  # the answer key must survive translation
+        new["answer_index"] = old["answer_index"]
+    result = clean_result(result)
+    db.save_translation(conn, file_id, code, row["sha256"], result)
+    return result

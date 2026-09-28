@@ -4,15 +4,17 @@
 """
 import argparse
 import json
+import logging
 import random
 import re
+import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from flask import Flask, abort, g, jsonify, render_template, request, send_file
+from flask import Flask, abort, g, jsonify, render_template, request, send_file, url_for
 
-from eclass import db, rag
-from eclass.ai import AIError, get_provider
+from eclass import db, i18n, rag, study
+from eclass.ai import AIError, DailyLimitReached, get_provider
 from eclass.notify import is_submitted, parse_due
 
 ROOT = Path(__file__).resolve().parent
@@ -22,15 +24,30 @@ ECLASS_URL = "https://eclass.inha.ac.kr"
 
 # One stable accent per course (by id order), so a course is recognisable wherever it appears.
 COURSE_COLORS = ["#f59e0b", "#14b8a6", "#f97360", "#3b82f6", "#84cc16", "#ec4899", "#8b5cf6", "#06b6d4"]
-WEEKDAYS = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
-MONTHS = ["yanvar", "fevral", "mart", "aprel", "may", "iyun", "iyul", "avgust", "sentabr", "oktabr",
-          "noyabr", "dekabr"]
 EN_MONTHS = {m: i for i, m in enumerate(
     ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october",
      "november", "december"], 1)}
 DEADLINE_WINDOW = timedelta(days=7)  # the countdown ring is full a week before a deadline
 
 app = Flask(__name__)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("eclass.web")
+
+
+def T(key, **kw):
+    return i18n.t(g.lang, key, **kw)
+
+
+@app.before_request
+def _language():
+    g.lang = i18n.pick(request.args.get("lang") or request.cookies.get("lang"))
+
+
+@app.after_request
+def _remember_language(resp):
+    if request.args.get("lang") in i18n.LANGS:
+        resp.set_cookie("lang", g.lang, max_age=365 * 24 * 3600, samesite="Lax")
+    return resp
 
 
 def conn():
@@ -47,26 +64,6 @@ def _close(_exc):
 
 
 # ---------------------------------------------------------------- helpers
-
-def human_delta(delta):
-    minutes = int(delta.total_seconds() // 60)
-    days, rem = divmod(minutes, 24 * 60)
-    hours, mins = divmod(rem, 60)
-    if days:
-        return f"{days} kun {hours} soat"
-    return f"{hours} soat {mins} daqiqa" if hours else f"{mins} daqiqa"
-
-
-def human_ago(when, now):
-    minutes = int((now - when).total_seconds() // 60)
-    if minutes < 1:
-        return "hozirgina"
-    if minutes < 60:
-        return f"{minutes} daqiqa oldin"
-    if minutes < 24 * 60:
-        return f"{minutes // 60} soat oldin"
-    return f"{minutes // (24 * 60)} kun oldin"
-
 
 def deadline(row, now):
     """Assignment row -> dict with a display state: done / overdue / soon / upcoming / nodate."""
@@ -86,7 +83,7 @@ def deadline(row, now):
         "state": state,
         "due": due,
         "due_iso": due.isoformat() if due else None,
-        "left": human_delta(remaining) if remaining else None,
+        "left": i18n.duration(g.lang, remaining) if remaining else None,
         "ring": min(1.0, remaining / DEADLINE_WINDOW) if remaining else 0.0,
         "days_left": remaining.days if remaining else 0,
         "hours_left": int(remaining.total_seconds() // 3600) if remaining else 0,
@@ -102,22 +99,22 @@ WEEK_RE = re.compile(r"^(\d+)\s*Week\s*\[(\d{1,2})\s+([A-Za-z]+)\s*-\s*(\d{1,2})
 
 
 def week_info(name, today):
-    """'3Week [19 September - 25 September]' -> title, Uzbek date range and whether it is this week."""
+    """'3Week [19 September - 25 September]' -> localized title, date range and whether it is this week."""
     m = WEEK_RE.match(name or "")
     if not m:
         general = not name or name.lower().startswith("course")
-        return {"title": "Umumiy" if general else name, "range": None, "current": False, "past": False}
+        return {"title": T("week.general") if general else name, "range": None, "current": False, "past": False}
     number, d1, m1, d2, m2 = m.groups()
     try:
         start = date(today.year, EN_MONTHS[m1.lower()], int(d1))
         end = date(today.year, EN_MONTHS[m2.lower()], int(d2))
     except (KeyError, ValueError):
-        return {"title": f"{number}-hafta", "range": None, "current": False, "past": False}
+        return {"title": T("week.n", n=number), "range": None, "current": False, "past": False}
     if end < start:  # a week crossing New Year
         end = end.replace(year=end.year + 1)
     return {
-        "title": f"{number}-hafta",
-        "range": f"{start.day} {MONTHS[start.month - 1][:3]} – {end.day} {MONTHS[end.month - 1][:3]}",
+        "title": T("week.n", n=number),
+        "range": i18n.day_range(g.lang, start, end),
         "current": start <= today <= end,
         "past": end < today,
     }
@@ -169,10 +166,24 @@ def _globals():
     colors = _colors()
     return {
         "eclass_url": ECLASS_URL,
-        "last_sync": human_ago(synced, now) if synced else "hali yo'q",
+        "last_sync": i18n.ago(g.lang, now - synced) if synced else T("sync.never"),
         "sync_fresh": bool(synced and now - synced < timedelta(hours=4)),
         "course_color": lambda cid: colors.get(cid, COURSE_COLORS[0]),
+        "t": T,
+        "pl": lambda n, word: i18n.plural(g.lang, n, word),
+        "lang": g.lang,
+        "langs": i18n.LANGS,
+        "lang_url": lang_url,
+        "js_t": i18n.js_strings(g.lang),
+        "status_label": lambda s: T(f"status.{s.lower()}") if s and f"status.{s.lower()}" in i18n.S else (s or ""),
     }
+
+
+def lang_url(code):
+    args = {**request.args.to_dict(), "lang": code}
+    if request.endpoint and request.endpoint != "static":
+        return url_for(request.endpoint, **(request.view_args or {}), **args)
+    return url_for("index", lang=code)
 
 
 @app.template_filter("size")
@@ -186,12 +197,12 @@ def _size(n):
 
 @app.template_filter("dt")
 def _dt(value):
-    return f"{value.day} {MONTHS[value.month - 1][:3]}, {value:%H:%M}" if value else "—"
+    return i18n.short_date(g.lang, value) if value else "—"
 
 
 @app.template_filter("ext")
 def _ext(name):
-    return Path(name).suffix.lstrip(".").upper()[:4] or "FAYL"
+    return Path(name).suffix.lstrip(".").upper()[:4] or "FILE"
 
 
 # ---------------------------------------------------------------- pages
@@ -221,18 +232,12 @@ def index():
            LEFT JOIN study s ON s.file_id = f.id AND s.sha256 = f.sha256
            WHERE a.type != 'assign' ORDER BY f.downloaded_at DESC, f.id DESC LIMIT 7""").fetchall()
     hour = now.hour
-    if 5 <= hour < 11:
-        greeting = "Xayrli tong"
-    elif 11 <= hour < 17:
-        greeting = "Xayrli kun"
-    elif 17 <= hour < 22:
-        greeting = "Xayrli kech"
-    else:
-        greeting = "Xayrli tun"
+    part = ("morning" if 5 <= hour < 11 else "day" if 11 <= hour < 17 else "evening" if 17 <= hour < 22
+            else "night")
     return render_template(
         "index.html", pending=pending, next_due=upcoming[0] if upcoming else None, graded=graded,
-        materials=materials, course_list=courses(), stats=stats, greeting=greeting,
-        today=f"{WEEKDAYS[now.weekday()]}, {now.day} {MONTHS[now.month - 1]}")
+        materials=materials, course_list=courses(), stats=stats, greeting=T(f"greet.{part}"),
+        today=i18n.long_date(g.lang, now))
 
 
 @app.route("/course/<int:course_id>")
@@ -270,8 +275,32 @@ def study_page(file_id):
            JOIN courses c ON c.id = a.course_id WHERE s.file_id = ?""", (file_id,)).fetchone()
     if row is None:
         abort(404)
-    return render_template("study.html", s=row, concepts=json.loads(row["concepts"]),
-                           flashcards=json.loads(row["flashcards"]), quiz=json.loads(row["quiz"]))
+    pack, translating = row, False
+    if row["language"] != g.lang:  # show a cached translation, or the original while one is made
+        cached = conn().execute(
+            "SELECT * FROM study_i18n WHERE file_id = ? AND language = ? AND sha256 = ?",
+            (file_id, g.lang, row["sha256"])).fetchone()
+        pack, translating = (cached, False) if cached else (row, True)
+    return render_template("study.html", s=row, summary=pack["summary"], concepts=json.loads(pack["concepts"]),
+                           flashcards=json.loads(pack["flashcards"]), quiz=json.loads(pack["quiz"]),
+                           translating=translating)
+
+
+@app.route("/api/translate/<int:file_id>", methods=["POST"])
+def api_translate(file_id):
+    if not request.is_json:
+        abort(415)
+    try:
+        study.translate_pack(conn(), get_provider(), file_id, g.lang)
+    except LookupError:
+        abort(404)
+    except DailyLimitReached as exc:
+        log.warning("translate %s -> %s: daily limit: %s", file_id, g.lang, exc)
+        return jsonify(error=T("err.ai_quota")), 429
+    except AIError as exc:
+        log.error("translate %s -> %s failed: %s", file_id, g.lang, exc)
+        return jsonify(error=T("err.ai")), 502
+    return jsonify(ok=True)
 
 
 @app.route("/grades")
@@ -323,13 +352,33 @@ def api_ask():
         abort(415)
     question = str(data.get("question", "")).strip()
     if not question or len(question) > 1000:
-        return jsonify(error="Savol bo'sh yoki juda uzun (1000 belgigacha)."), 400
+        return jsonify(error=T("err.question")), 400
     course_id = data.get("course_id") or None
+    history = [{"q": str(h.get("q", ""))[:2000], "a": str(h.get("a", ""))[:2000]}
+               for h in (data.get("history") or []) if isinstance(h, dict)][-rag.HISTORY_TURNS:]
+
+    def ask(provider):
+        return rag.answer(conn(), provider, question, course_id=int(course_id) if course_id else None,
+                          language=i18n.AI_LANGUAGE[g.lang], history=history, not_found=T("ask.not_found"))
     try:
-        result = rag.answer(conn(), get_provider(), question,
-                            course_id=int(course_id) if course_id else None)
+        provider = get_provider()
+        try:
+            result = ask(provider)
+        except DailyLimitReached:
+            raise
+        except AIError as exc:  # transient provider hiccup: one retry after a short pause
+            log.warning("ask failed, retrying once: %s", exc)
+            time.sleep(2)
+            result = ask(provider)
+    except DailyLimitReached as exc:
+        log.warning("ask: daily limit: %s", exc)
+        return jsonify(error=T("err.ai_quota")), 429
     except AIError as exc:
-        return jsonify(error=f"AI xatosi: {exc}"), 502
+        log.error("ask failed after retry: %s", exc)
+        return jsonify(error=T("err.ai")), 502
+    except Exception:  # never show a traceback to the page; details go to the log only
+        log.exception("ask crashed")
+        return jsonify(error=T("err.ai")), 500
     return jsonify(result)
 
 
