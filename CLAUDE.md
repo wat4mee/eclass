@@ -76,7 +76,8 @@ tracks deadlines/grades, and analyzes materials with AI. Personal use only, sing
 - Handle login expiry: if a response redirects to `/login`, re-login once and retry.
 
 ## Status (2026-09-28)
-- 1 sync: done (`sync.py`). 2 notifications: done (`notify.py`), Telegram not connected yet.
+- 1 sync: done (`sync.py`). 2 notifications: done (`notify.py`), Telegram bot @eclass_login_bot connected
+  2026-09-28 (`notify.py --test` sends a test message, `--chat-id` lists chats).
 - 3 extraction + study packs: done (`analyze.py`); Calculus lecture PDFs are image-only -> OCR.
 - 4 Q&A: done (`ask.py`, `eclass/rag.py`): FTS5 + local `BAAI/bge-small-en-v1.5` (fastembed, cached in
   `data/models`). Embedding uses `EMBED_THREADS` (default 2) cores and commits every 40 pages
