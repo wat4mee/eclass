@@ -169,20 +169,44 @@ def _vector_ranks(conn, query, course_id):
     return [rows[i]["id"] for i in best]
 
 
+_PAGE_NUMBER_END = re.compile(r"(\.{2,}|\s)\d{1,4}\s*$")
+_SECTION_START = re.compile(r"^\s*\d+(\.\d+)+\s")
+NAVIGATION_PENALTY = 0.3
+
+
+def is_navigation(text):
+    """Table of contents, index or course-schedule text: lists of headings / page numbers, no content."""
+    lines = [line for line in text.splitlines() if line.strip()]
+    if len(lines) < 6:
+        return False
+    numbered = sum(bool(_PAGE_NUMBER_END.search(line) or _SECTION_START.match(line)) for line in lines)
+    return numbered / len(lines) >= 0.3
+
+
 def search(conn, query, course_id=None, k=TOP_K):
-    """Reciprocal-rank fusion of keyword and vector results; at most 2 chunks per page."""
+    """Reciprocal-rank fusion of keyword and vector results; at most 2 chunks per page.
+
+    Navigation pages (tables of contents, indexes, schedules) mention every topic by name and
+    would otherwise outrank the pages that actually explain it, so their score is damped.
+    """
     scores = {}
     for ranking in (_keyword_ranks(conn, query, course_id), _vector_ranks(conn, query, course_id)):
         for rank, cid in enumerate(ranking):
             scores[cid] = scores.get(cid, 0.0) + 1.0 / (_RRF_K + rank)
-    results, per_page = [], {}
-    for cid in sorted(scores, key=scores.get, reverse=True):
+    rows = {}
+    for cid in scores:
         row = conn.execute(
             """SELECT c.id, c.file_id, c.page, c.text, f.filename, a.name AS activity,
                       co.id AS course_id, co.name AS course
                FROM chunks c JOIN files f ON f.id = c.file_id
                JOIN activities a ON a.id = f.activity_id JOIN courses co ON co.id = a.course_id
                WHERE c.id = ?""", (cid,)).fetchone()
+        rows[cid] = row
+        if is_navigation(row["text"]):
+            scores[cid] *= NAVIGATION_PENALTY
+    results, per_page = [], {}
+    for cid in sorted(scores, key=scores.get, reverse=True):
+        row = rows[cid]
         key = (row["file_id"], row["page"])
         if per_page.get(key, 0) >= 2:
             continue
@@ -213,8 +237,14 @@ _ANSWER_SCHEMA = {
 }
 
 _REWRITE_SYSTEM = (
-    "Turn the student's question (any language) into one concise English search query for "
-    "university course materials: the key technical terms and synonyms, no filler words."
+    "A first-year student at INHA University in Tashkent asks about English course materials. "
+    "The question is usually in Uzbek (Latin script), sometimes Russian or English. Translate every "
+    "subject term into the standard English academic term used in textbooks (e.g. hosila -> derivative, "
+    "boshlang'ich funksiya -> antiderivative, uzluksizlik -> continuity, to'plam -> set, "
+    "massiv -> array, sinf -> class, merosxo'rlik -> inheritance, sanoq sistemasi -> number system). "
+    "Return one English search query of 4-12 words phrased like the question itself, e.g. "
+    "'definition of the derivative of a function' or 'difference between prefix and postfix "
+    "increment in C++'. Never add words unrelated to the question."
 )
 
 _ANSWER_SYSTEM = (
@@ -228,7 +258,9 @@ _ANSWER_SYSTEM = (
 
 
 def answer(conn, provider, question, course_id=None, k=TOP_K):
-    query = provider.complete_json(_REWRITE_SYSTEM, question, _REWRITE_SCHEMA, max_tokens=300)["query"]
+    course = conn.execute("SELECT name FROM courses WHERE id = ?", (course_id,)).fetchone() if course_id else None
+    prompt = f"Course: {course['name']}\nQuestion: {question}" if course else question
+    query = provider.complete_json(_REWRITE_SYSTEM, prompt, _REWRITE_SCHEMA, max_tokens=300)["query"]
     passages = search(conn, query, course_id, k)
     if not passages:
         return {"answer": "Materiallarda mos ma'lumot topilmadi.", "query": query, "sources": []}
