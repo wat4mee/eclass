@@ -20,6 +20,21 @@
 .g-stats b { font-size: 26px; font-weight: 800; letter-spacing: -.03em; }
 .g-stats span { font-size: 13px; color: var(--muted); font-weight: 600; }
 
+.course-block { padding: 0; overflow: hidden; margin-bottom: 16px; }
+.cb-head { position: relative; display: flex; align-items: center; gap: 18px; padding: 18px 22px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--c) 12%, var(--surface)), var(--surface)); border-bottom: 1px solid var(--line); }
+.cb-stripe { position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--c); }
+.cb-name { flex: 1; min-width: 0; }
+.cb-name h2 { font-size: 18px; font-weight: 800; }
+.cb-score { display: grid; justify-items: end; text-align: right; }
+.cb-score b { font-size: 26px; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; }
+.cb-score small { font-size: 15px; color: var(--muted); font-weight: 700; }
+.cb-list { padding: 6px 10px; }
+.cb-list .row { grid-template-columns: 1.4fr 1fr; }
+.cb-ungraded { display: grid; gap: 8px; padding: 14px 22px 18px; border-top: 1px dashed var(--line); }
+.ug { display: grid; grid-template-columns: 1fr auto auto; gap: 14px; align-items: center; }
+.ug a { font-weight: 700; }
+.ug a:hover { color: var(--accent); }
 .rows { padding: 8px; }
 .row { display: grid; grid-template-columns: 1.1fr 1.5fr .9fr auto 1.1fr; gap: 16px; align-items: center; padding: 14px 14px;
   border-radius: 14px; transition: background .25s; }
@@ -34,6 +49,13 @@
 .grade-cell { display: grid; gap: 6px; }
 .grade-cell .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 14px; }
 .grade-cell b { font-size: 16px; font-weight: 800; }
+@media (max-width: 640px) {
+  .cb-head { flex-wrap: wrap; }
+  .cb-score { justify-items: start; text-align: left; }
+  .cb-list .row { grid-template-columns: 1fr; }
+  .ug { grid-template-columns: 1fr auto; }
+  .ug .num { grid-row: 2; }
+}
 @media (max-width: 860px) {
   .g-hero { grid-template-columns: 1fr; justify-items: start; gap: 18px; }
   .row { grid-template-columns: 1fr auto; gap: 8px 14px; }
@@ -67,24 +89,46 @@
   </div>
 </section>
 
-<section class="card rows reveal">
-  <div class="row head"><span>{{ t('col.course') }}</span><span>{{ t('col.assignment') }}</span><span>{{ t('col.due') }}</span><span>{{ t('col.status') }}</span><span>{{ t('col.grade') }}</span></div>
-  {% for d in items %}
-  <div class="row" style="--c: {{ course_color(d.course_id) }}; --i: {{ loop.index }}">
-    <span class="course-cell"><span class="dot"></span>{{ d.course }}</span>
-    <span class="task">
-      <a href="{{ eclass_url }}/mod/assign/view.php?id={{ d.activity_id }}" target="_blank" rel="noopener">{{ d.name }}</a>
-      <small>{{ status_label(d.grading_status) }}</small>
-    </span>
-    <span class="small muted due num">{{ d.due | dt if d.due else t('assign.no_due') }}</span>
-    <span><span class="badge b-{{ d.state }}">{{ t('state.' ~ d.state) }}</span></span>
-    <span class="grade-cell">
-      {% if d.grade %}
-      <span class="top"><b class="num">{{ d.grade }}</b>{% if d.pct is not none %}<span class="muted num">{{ d.pct }}%</span>{% endif %}</span>
-      {% if d.pct is not none %}<span class="bar-track"><span style="--w: {{ d.pct }}%"></span></span>{% endif %}
-      {% else %}<span class="muted">{{ t('grades.not_graded') }}</span>{% endif %}
-    </span>
+{% for g in by_course %}
+<section class="card course-block reveal" style="--c: {{ course_color(g.course_id) }}">
+  <header class="cb-head">
+    <span class="cb-stripe"></span>
+    <div class="cb-name"><h2>{{ g.course }}</h2>
+      <span class="muted small">{{ g.graded | length }} {{ t('grades.graded') }} · {{ g.ungraded | length }} {{ t('grades.ungraded') | lower }}</span></div>
+    {% if g.possible %}
+    <div class="cb-score">
+      <span class="eyebrow">{{ t('grades.earned') }}</span>
+      <b class="num">{{ '%g' % g.earned }} <small>/ {{ '%g' % g.possible }}</small></b>
+      <span class="muted small">{{ g.pct }}% · {{ t('grades.course_avg') }} {{ g.avg }}%</span>
+    </div>
+    {% endif %}
+  </header>
+  {% if g.graded %}
+  <div class="cb-list">
+    {% for d in g.graded %}
+    <div class="row" style="--i: {{ loop.index }}">
+      <span class="task"><a href="{{ eclass_url }}/mod/assign/view.php?id={{ d.activity_id }}" target="_blank" rel="noopener">{{ d.name }}</a>
+        <small>{{ d.due | dt if d.due else t('assign.no_due') }} · {{ status_label(d.grading_status) }}</small></span>
+      <span class="grade-cell">
+        <span class="top"><b class="num">{{ d.grade }}</b>{% if d.pct is not none %}<span class="muted num">{{ d.pct }}%</span>{% endif %}</span>
+        {% if d.pct is not none %}<span class="bar-track"><span style="--w: {{ d.pct }}%"></span></span>{% endif %}
+      </span>
+    </div>
+    {% endfor %}
   </div>
-  {% endfor %}
+  {% endif %}
+  {% if g.ungraded %}
+  <div class="cb-ungraded">
+    <span class="eyebrow">{{ t('grades.ungraded') }}</span>
+    {% for d in g.ungraded %}
+    <div class="ug">
+      <a href="{{ eclass_url }}/mod/assign/view.php?id={{ d.activity_id }}" target="_blank" rel="noopener">{{ d.name }}</a>
+      <span class="muted small num">{{ d.due | dt if d.due else t('assign.no_due') }}</span>
+      <span class="badge b-{{ d.state }}">{{ t('state.' ~ d.state) }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 </section>
+{% endfor %}
 {% endblock %}

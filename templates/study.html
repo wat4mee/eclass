@@ -124,11 +124,14 @@ kbd { font: 700 11px var(--font); padding: 2px 7px; border-radius: 6px; border: 
 {% endblock %}
 {% block content %}
 <section class="study-hero reveal" style="--c: {{ course_color(s.course_id) }}">
-  <a class="back" href="{{ url_for('course', course_id=s.course_id) }}"><svg class="ico"><use href="#i-back"/></svg>{{ s.course }}</a>
+  <a class="back" href="{{ back_url or url_for('course', course_id=s.course_id) }}"><svg class="ico"><use href="#i-back"/></svg>{{ back_label or s.course }}</a>
   <h1 class="display">{{ s.activity }}</h1>
   <div class="hero-meta">
     <a class="chip" href="{{ url_for('file_view', file_id=s.file_id) }}" target="_blank"><span class="ext ext-{{ s.filename | ext }}" style="width: auto; padding: 3px 6px">{{ s.filename | ext }}</span>{{ s.filename }}</a>
     <span class="chip"><svg class="ico" style="width: 14px; height: 14px"><use href="#i-sparkles"/></svg>{{ s.model }}</span>
+    {% if studied is defined %}
+    <button class="chip studied-btn {{ 'on' if studied }}" type="button" data-file="{{ s.file_id }}"><svg class="ico"><use href="#i-check"/></svg><span>{{ js_t.studied_done if studied else js_t.studied_mark }}</span></button>
+    {% endif %}
   </div>
 </section>
 

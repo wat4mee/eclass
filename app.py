@@ -9,13 +9,14 @@ import random
 import re
 import subprocess
 import sys
+import threading
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from flask import Flask, abort, g, jsonify, render_template, request, send_file, url_for
+from flask import Flask, abort, g, jsonify, redirect, render_template, request, send_file, url_for
 
-from eclass import db, i18n, rag, study, syncstatus
+from eclass import chapters, db, i18n, rag, search, study, syncstatus, videos
 from eclass.ai import AIError, DailyLimitReached, get_provider
 from eclass.notify import is_submitted, parse_due
 
@@ -93,9 +94,15 @@ def deadline(row, now):
     }
 
 
-def grade_percent(grade):
+def grade_points(grade):
+    """'22.00 / 25.00' -> (22.0, 25.0); None when the grade is not a score."""
     m = re.match(r"\s*([\d.]+)\s*/\s*([\d.]+)", grade or "")
-    return round(100 * float(m.group(1)) / float(m.group(2))) if m and float(m.group(2)) else None
+    return (float(m.group(1)), float(m.group(2))) if m and float(m.group(2)) else None
+
+
+def grade_percent(grade):
+    points = grade_points(grade)
+    return round(100 * points[0] / points[1]) if points else None
 
 
 WEEK_RE = re.compile(r"^(\d+)\s*Week\s*\[(\d{1,2})\s+([A-Za-z]+)\s*-\s*(\d{1,2})\s+([A-Za-z]+)\]", re.I)
@@ -179,6 +186,7 @@ def _globals():
         "lang_url": lang_url,
         "js_t": i18n.js_strings(g.lang),
         "sync_status": sync_status(),
+        "is_book": chapters.is_book,
         "status_label": lambda s: T(f"status.{s.lower()}") if s and f"status.{s.lower()}" in i18n.S else (s or ""),
     }
 
@@ -243,17 +251,66 @@ def index():
     }
     materials = c.execute(
         """SELECT f.id, f.filename, f.downloaded_at, a.name AS activity, c.id AS course_id,
-                  c.name AS course, (s.file_id IS NOT NULL) AS has_study
+                  c.name AS course, (s.file_id IS NOT NULL) AS has_study,
+                  (SELECT n_chars FROM extractions e WHERE e.file_id = f.id) AS n_chars,
+                  EXISTS (SELECT 1 FROM progress p WHERE p.file_id = f.id) AS studied
            FROM files f JOIN activities a ON a.id = f.activity_id JOIN courses c ON c.id = a.course_id
            LEFT JOIN study s ON s.file_id = f.id AND s.sha256 = f.sha256
-           WHERE a.type != 'assign' ORDER BY f.downloaded_at DESC, f.id DESC LIMIT 7""").fetchall()
+           WHERE a.type != 'assign' AND f.path NOT LIKE 'youtube:%'
+           ORDER BY f.downloaded_at DESC, f.id DESC LIMIT 7""").fetchall()
+    today_plan = plan_for_today(c, pending, now)
     hour = now.hour
     part = ("morning" if 5 <= hour < 11 else "day" if 11 <= hour < 17 else "evening" if 17 <= hour < 22
             else "night")
     return render_template(
         "index.html", pending=pending, next_due=upcoming[0] if upcoming else None, graded=graded,
-        materials=materials, course_list=courses(), stats=stats, greeting=T(f"greet.{part}"),
+        materials=materials, course_list=courses(), stats=stats, greeting=T(f"greet.{part}"), plan=today_plan,
         today=i18n.long_date(g.lang, now))
+
+
+def plan_for_today(c, pending, now):
+    """Deadlines this week, the newest unstudied material and one concrete suggestion."""
+    week = now + timedelta(days=7)
+    due = [d for d in pending if d["state"] in ("overdue", "soon") or (d["due"] and d["due"] <= week)][:3]
+    unread = c.execute(
+        """SELECT f.id, a.name AS activity, co.id AS course_id, co.name AS course
+           FROM study s JOIN files f ON f.id = s.file_id AND f.sha256 = s.sha256
+           JOIN activities a ON a.id = f.activity_id JOIN courses co ON co.id = a.course_id
+           WHERE a.type != 'assign' AND NOT EXISTS (SELECT 1 FROM progress p WHERE p.file_id = f.id)
+           ORDER BY f.downloaded_at DESC, f.id DESC LIMIT 1""").fetchone()
+    first = {state: next((d for d in pending if d["state"] == state), None) for state in ("overdue", "soon", "upcoming")}
+    assign_url = lambda d: f"{ECLASS_URL}/mod/assign/view.php?id={d['activity_id']}"
+    if first["overdue"]:
+        tip = (T("tip.overdue", name=first["overdue"]["name"]), assign_url(first["overdue"]))
+    elif first["soon"]:
+        tip = (T("tip.soon", name=first["soon"]["name"], left=first["soon"]["left"]), assign_url(first["soon"]))
+    elif unread:
+        tip = (T("tip.study", name=unread["activity"]), url_for("study_page", file_id=unread["id"]))
+    elif first["upcoming"]:
+        tip = (T("tip.upcoming", name=first["upcoming"]["name"], left=first["upcoming"]["left"]),
+               assign_url(first["upcoming"]))
+    else:
+        review = c.execute(
+            """SELECT f.id, a.name FROM study s JOIN files f ON f.id = s.file_id JOIN activities a ON a.id = f.activity_id
+               ORDER BY random() LIMIT 1""").fetchone()
+        tip = (T("tip.review", name=review["name"]), url_for("study_page", file_id=review["id"]) + "#quiz") if review else None
+    return {"due": due, "unread": unread, "tip": tip}
+
+
+@app.route("/api/studied/<int:file_id>", methods=["POST"])
+def api_studied(file_id):
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        abort(415)
+    c = conn()
+    if c.execute("SELECT 1 FROM files WHERE id = ?", (file_id,)).fetchone() is None:
+        abort(404)
+    if data.get("studied"):
+        c.execute("INSERT OR IGNORE INTO progress (file_id, studied_at) VALUES (?, ?)", (file_id, db.now()))
+    else:
+        c.execute("DELETE FROM progress WHERE file_id = ?", (file_id,))
+    c.commit()
+    return jsonify(studied=bool(data.get("studied")))
 
 
 @app.route("/course/<int:course_id>")
@@ -268,7 +325,8 @@ def course(course_id):
         "SELECT * FROM activities WHERE course_id = ? ORDER BY section, id", (course_id,)).fetchall()
     files = {}
     for f in c.execute(
-            """SELECT f.id, f.activity_id, f.filename, f.size, (s.file_id IS NOT NULL) AS has_study
+            """SELECT f.id, f.activity_id, f.filename, f.size, (s.file_id IS NOT NULL) AS has_study,
+                      (SELECT n_chars FROM extractions e WHERE e.file_id = f.id) AS n_chars
                FROM files f JOIN activities a ON a.id = f.activity_id
                LEFT JOIN study s ON s.file_id = f.id AND s.sha256 = f.sha256
                WHERE a.course_id = ? ORDER BY f.filename""", (course_id,)):
@@ -280,7 +338,12 @@ def course(course_id):
     today = date.today()
     weeks = [(s, week_info(s["name"], today), by_section[s["number"]])
              for s in sections if by_section.get(s["number"])]
-    return render_template("course.html", course=info, weeks=weeks, files=files, assigns=assigns)
+    video = {}
+    for aid, v in videos.status_by_activity(c).items():
+        pack = c.execute("SELECT 1 FROM study s JOIN files f ON f.id = s.file_id AND f.sha256 = s.sha256 WHERE f.id = ?",
+                         (v["file_id"],)).fetchone() if v["file_id"] else None
+        video[aid] = {"status": v["status"], "file_id": v["file_id"], "has_study": bool(pack)}
+    return render_template("course.html", course=info, weeks=weeks, files=files, assigns=assigns, video=video)
 
 
 @app.route("/study/<int:file_id>")
@@ -297,9 +360,91 @@ def study_page(file_id):
             "SELECT * FROM study_i18n WHERE file_id = ? AND language = ? AND sha256 = ?",
             (file_id, g.lang, row["sha256"])).fetchone()
         pack, translating = (cached, False) if cached else (row, True)
+    studied = conn().execute("SELECT 1 FROM progress WHERE file_id = ?", (file_id,)).fetchone() is not None
     return render_template("study.html", s=row, summary=pack["summary"], concepts=json.loads(pack["concepts"]),
                            flashcards=json.loads(pack["flashcards"]), quiz=json.loads(pack["quiz"]),
-                           translating=translating)
+                           translating=translating, studied=studied)
+
+
+# ---------------------------------------------------------------- textbooks: chapters on demand
+
+_jobs, _jobs_lock = {}, threading.Lock()  # (file_id, idx) -> {"state": running|done|error, "step": "3/8"}
+
+
+def _chapter_worker(file_id, idx):
+    key, own = (file_id, idx), db.connect(DB_PATH)
+
+    def progress(msg):
+        m = re.search(r"notes (\d+)/(\d+)", msg)
+        if m:
+            _jobs[key]["step"] = f"{m.group(1)}/{m.group(2)}"
+    try:
+        chapters.generate(own, get_provider(), file_id, idx, log=progress)
+        _jobs[key] = {"state": "done"}
+    except DailyLimitReached as exc:
+        log.warning("chapter %s/%s: daily limit: %s", file_id, idx, exc)
+        _jobs[key] = {"state": "error", "code": "quota"}
+    except Exception:
+        log.exception("chapter %s/%s failed", file_id, idx)
+        _jobs[key] = {"state": "error", "code": "ai"}
+    finally:
+        own.close()
+
+
+def _book_file(file_id):
+    row = conn().execute(
+        """SELECT f.*, e.n_chars, a.name AS activity, c.id AS course_id, c.name AS course
+           FROM files f JOIN extractions e ON e.file_id = f.id AND e.error IS NULL
+           JOIN activities a ON a.id = f.activity_id JOIN courses c ON c.id = a.course_id WHERE f.id = ?""",
+        (file_id,)).fetchone()
+    if row is None or not chapters.is_book(row["n_chars"]):
+        abort(404)
+    return row
+
+
+@app.route("/book/<int:file_id>")
+def book(file_id):
+    f = _book_file(file_id)
+    rows = chapters.ensure(conn(), f)
+    running = {idx: job for (fid, idx), job in _jobs.items() if fid == file_id and job.get("state") == "running"}
+    return render_template("book.html", f=f, chapters=rows, running=running)
+
+
+@app.route("/api/chapter/<int:file_id>/<int:idx>", methods=["GET", "POST"])
+def api_chapter(file_id, idx):
+    key = (file_id, idx)
+    row = conn().execute("SELECT summary FROM chapters WHERE file_id = ? AND idx = ?", key).fetchone()
+    if row is None:
+        abort(404)
+    if row["summary"]:
+        return jsonify(state="done")
+    if request.method == "POST":
+        if not request.is_json:
+            abort(415)
+        with _jobs_lock:
+            if _jobs.get(key, {}).get("state") != "running":
+                if any(j.get("state") == "running" for j in _jobs.values()):
+                    return jsonify(state="busy", message=T("book.busy")), 409
+                _jobs[key] = {"state": "running", "step": ""}
+                threading.Thread(target=_chapter_worker, args=key, daemon=True).start()
+    job = dict(_jobs.get(key, {"state": "idle"}))
+    if job["state"] == "error":
+        job["message"] = T("err.ai_quota" if job.get("code") == "quota" else "err.ai")
+    return jsonify(job)
+
+
+@app.route("/study/<int:file_id>/ch/<int:idx>")
+def chapter_page(file_id, idx):
+    f = _book_file(file_id)
+    ch = conn().execute("SELECT * FROM chapters WHERE file_id = ? AND idx = ?", (file_id, idx)).fetchone()
+    if ch is None or not ch["summary"]:
+        abort(404)
+    title = ch["title"] or T("book.pages", a=ch["start_page"], b=ch["end_page"])
+    s = {"file_id": file_id, "activity": title, "course": f["course"], "course_id": f["course_id"],
+         "filename": f["filename"], "model": ch["model"], "language": ch["language"]}
+    return render_template("study.html", s=s, summary=ch["summary"], concepts=json.loads(ch["concepts"]),
+                           flashcards=json.loads(ch["flashcards"]), quiz=json.loads(ch["quiz"]), translating=False,
+                           back_url=url_for("book", file_id=file_id), back_label=f["activity"])
 
 
 @app.route("/api/translate/<int:file_id>", methods=["POST"])
@@ -324,13 +469,27 @@ def grades():
     items = [d | {"pct": grade_percent(d["grade"])} for d in all_assignments()]
     items.sort(key=lambda d: (d["course"], d["due_date"] or ""))
     pcts = [d["pct"] for d in items if d["pct"] is not None]
+    groups = {}
+    for d in items:
+        g = groups.setdefault(d["course_id"], {"course_id": d["course_id"], "course": d["course"],
+                                               "graded": [], "ungraded": [], "earned": 0.0, "possible": 0.0})
+        points = grade_points(d["grade"])
+        (g["graded"] if d["grade"] else g["ungraded"]).append(d)
+        if points:
+            g["earned"] += points[0]
+            g["possible"] += points[1]
+    for g in groups.values():
+        course_pcts = [d["pct"] for d in g["graded"] if d["pct"] is not None]
+        g["pct"] = round(100 * g["earned"] / g["possible"]) if g["possible"] else None
+        g["avg"] = round(sum(course_pcts) / len(course_pcts)) if course_pcts else None
+    by_course = sorted(groups.values(), key=lambda g: (g["pct"] is None, g["course"]))
     summary = {
         "avg": round(sum(pcts) / len(pcts)) if pcts else None,
         "graded": len(pcts),
         "done": sum(d["state"] == "done" for d in items),
         "total": len(items),
     }
-    return render_template("grades.html", items=items, summary=summary)
+    return render_template("grades.html", items=items, summary=summary, by_course=by_course)
 
 
 def question_suggestions():
@@ -398,6 +557,32 @@ def api_ask():
     return jsonify(result)
 
 
+@app.route("/api/search")
+def api_search():
+    c, colors = conn(), _colors()
+    names = {r["id"]: r["name"] for r in c.execute("SELECT id, name FROM courses")}
+    results = []
+    for r in search.query(c, request.args.get("q", "")[:200]):
+        kind, ref, external = r["kind"], r["ref"], False
+        if kind == "course":
+            url = url_for("course", course_id=ref)
+        elif kind == "study":
+            url = url_for("study_page", file_id=ref)
+        elif kind == "chapter":
+            file_id, idx = ref.split("/")
+            url = url_for("chapter_page", file_id=int(file_id), idx=int(idx))
+        elif kind == "file":
+            url, external = url_for("file_view", file_id=ref), True
+        elif kind == "assign":
+            url, external = f"{ECLASS_URL}/mod/assign/view.php?id={ref}", True
+        else:  # other course activities (videos, boards): the course page lists them
+            url = url_for("course", course_id=r["course_id"])
+        results.append({"kind": kind, "kind_label": T(f"kind.{kind}"), "url": url, "external": external,
+                        "title_html": r["title_html"], "snippet_html": r["snippet_html"],
+                        "course": names.get(r["course_id"], ""), "color": colors.get(r["course_id"], COURSE_COLORS[0])})
+    return jsonify(results=results)
+
+
 @app.route("/api/sync", methods=["POST"])
 def api_sync():
     if not request.is_json:
@@ -419,9 +604,11 @@ def api_sync_status():
 
 @app.route("/file/<int:file_id>")
 def file_view(file_id):
-    row = conn().execute("SELECT path, filename FROM files WHERE id = ?", (file_id,)).fetchone()
+    row = conn().execute("SELECT path, filename, source_url FROM files WHERE id = ?", (file_id,)).fetchone()
     if row is None:
         abort(404)
+    if row["path"].startswith("youtube:"):  # a lecture transcript: open the video itself
+        return redirect(row["source_url"] or f"https://youtu.be/{row['path'][8:]}")
     path = Path(row["path"]).resolve()
     if not path.is_relative_to(FILES_DIR) or not path.is_file():
         abort(404)

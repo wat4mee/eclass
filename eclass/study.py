@@ -82,7 +82,7 @@ def language():
 
 
 def pending(conn, force=False):
-    """Extracted course materials (not assignment attachments, not textbooks) without a current study pack."""
+    """Extracted materials and assignment files (not textbooks - see chapters.py) without a current study pack."""
     stale = "" if force else "AND (s.file_id IS NULL OR s.sha256 != f.sha256)"
     return conn.execute(
         f"""SELECT f.id, f.filename, f.sha256, e.n_chars, e.n_pages,
@@ -92,7 +92,7 @@ def pending(conn, force=False):
             JOIN activities a ON a.id = f.activity_id
             JOIN courses c ON c.id = a.course_id
             LEFT JOIN study s ON s.file_id = f.id
-            WHERE e.error IS NULL AND a.type != 'assign'
+            WHERE e.error IS NULL
               AND e.n_chars BETWEEN ? AND ? {stale}
             ORDER BY c.name, a.section, f.id""",
         (MIN_AI_CHARS, MAX_AI_CHARS),
@@ -126,9 +126,11 @@ def chunk_pages(pages, limit=CHUNK_CHARS):
     return chunks
 
 
-def _notes_for(conn, provider, f, chunks, log):
-    done = {r["chunk"]: r["notes"] for r in conn.execute(
-        "SELECT chunk, notes FROM study_notes WHERE file_id = ? AND sha256 = ?", (f["id"], f["sha256"]))}
+def _notes_for(conn, provider, f, chunks, log, offset=0):
+    """Map step, resumable: notes for chunk i are stored under chunk number offset + i."""
+    done = {r["chunk"] - offset: r["notes"] for r in conn.execute(
+        "SELECT chunk, notes FROM study_notes WHERE file_id = ? AND sha256 = ? AND chunk >= ? AND chunk < ?",
+        (f["id"], f["sha256"], offset, offset + 100_000))}
     notes = []
     for i, chunk in enumerate(chunks):
         if i not in done:
@@ -138,7 +140,7 @@ def _notes_for(conn, provider, f, chunks, log):
                 NOTES_SCHEMA, max_tokens=1500)
             done[i] = result["notes"]
             conn.execute("INSERT OR REPLACE INTO study_notes VALUES (?, ?, ?, ?)",
-                         (f["id"], f["sha256"], i, done[i]))
+                         (f["id"], f["sha256"], offset + i, done[i]))
             conn.commit()
         notes.append(done[i])
     return "\n\n".join(f"[Part {i + 1}]\n{n}" for i, n in enumerate(notes))
@@ -151,16 +153,23 @@ def clean_result(result):
     return {**result, "quiz": quiz[:5]}
 
 
-def generate(conn, provider, f, log=print):
-    chunks = chunk_pages(file_text(conn, f["id"]))
-    material = chunks[0] if len(chunks) == 1 else _notes_for(conn, provider, f, chunks, log)
+def build_pack(conn, provider, f, pages, log=print, notes_offset=0):
+    """Study pack (not saved) from (page, text) pairs; long texts are condensed chunk by chunk first."""
+    chunks = chunk_pages(pages)
+    if not chunks:
+        raise ValueError("no text to study")
+    material = chunks[0] if len(chunks) == 1 else _notes_for(conn, provider, f, chunks, log, notes_offset)
     while len(material) > CHUNK_CHARS:  # extremely long notes: condense once more
         material = "\n\n".join(
             provider.complete_json(NOTES_SYSTEM, part, NOTES_SCHEMA, max_tokens=1500)["notes"]
             for part in chunk_pages([(0, material)]))
     code, lang_name = language()
     user = f"Course: {f['course']}\nMaterial: {f['activity']} ({f['filename']})\n\n{material}"
-    result = clean_result(provider.complete_json(study_system(lang_name), user, STUDY_SCHEMA, max_tokens=4000))
+    return code, clean_result(provider.complete_json(study_system(lang_name), user, STUDY_SCHEMA, max_tokens=4000))
+
+
+def generate(conn, provider, f, log=print):
+    code, result = build_pack(conn, provider, f, file_text(conn, f["id"]), log)
     db.save_study(conn, f["id"], f["sha256"], provider.name, provider.model, code, result)
     return result
 

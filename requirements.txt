@@ -9,3 +9,4 @@ fastembed
 numpy
 flask
 playwright
+youtube-transcript-api

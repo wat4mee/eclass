@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}{{ f.activity }} · {{ t('book.chapters') }}{% endblock %}
+{% block style %}
+.book-hero { padding: 30px; margin: 4px 0 22px; overflow: hidden;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--c) 16%, var(--surface)) 0%, var(--surface) 60%); }
+.book-hero .display { font-size: clamp(36px, 5vw, 56px); margin: 12px 0 10px; }
+.book-hero .hint { max-width: 62ch; font-size: 14px; color: var(--muted); margin-top: 12px; }
+.chapters { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.chapter { display: flex; flex-direction: column; gap: 8px; padding: 18px; }
+.chapter .num { font-family: var(--display); font-size: 30px; line-height: 1; color: var(--c); }
+.chapter h3 { font-size: 15.5px; font-weight: 800; line-height: 1.35; }
+.chapter .foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 6px; }
+.chapter .btn { padding: 7px 13px; font-size: 13px; }
+.chapter .btn .spin { display: none; width: 14px; height: 14px; border-radius: 50%; border: 2px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-top-color: currentColor; animation: spin .8s linear infinite; }
+.chapter .btn.running .spin { display: inline-block; }
+.chapter .btn.running .ico { display: none; }
+.chapter .err { font-size: 12.5px; color: var(--bad); }
+.chapter.ready { border-color: color-mix(in srgb, var(--c) 35%, var(--line)); }
+@media (max-width: 640px) { .book-hero { padding: 22px; } }
+{% endblock %}
+{% block content %}
+<section class="card book-hero reveal" style="--c: {{ course_color(f.course_id) }}">
+  <a class="back" href="{{ url_for('course', course_id=f.course_id) }}"><svg class="ico"><use href="#i-back"/></svg>{{ f.course }}</a>
+  <div style="margin-top: 16px"><span class="eyebrow">{{ t('book.eyebrow', n=chapters | length) }}</span></div>
+  <h1 class="display">{{ f.activity }}</h1>
+  <a class="chip" href="{{ url_for('file_view', file_id=f.id) }}" target="_blank"><span class="ext ext-{{ f.filename | ext }}" style="width: auto; padding: 3px 6px">{{ f.filename | ext }}</span>{{ f.filename }}</a>
+  <p class="hint">{{ t('book.hint') }}</p>
+</section>
+
+<section class="chapters" style="--c: {{ course_color(f.course_id) }}">
+  {% for ch in chapters %}
+  <article class="card lift chapter reveal {{ 'ready' if ch.summary }}" data-idx="{{ ch.idx }}">
+    <span class="num">{{ loop.index }}</span>
+    <h3>{{ ch.title or t('book.pages', a=ch.start_page, b=ch.end_page) }}</h3>
+    <div class="foot">
+      <span class="muted small">{{ t('book.pages', a=ch.start_page, b=ch.end_page) }}</span>
+      {% if ch.summary %}
+      <a class="study-chip" href="{{ url_for('chapter_page', file_id=f.id, idx=ch.idx) }}"><svg class="ico"><use href="#i-sparkles"/></svg>{{ t('study.open') }}</a>
+      {% else %}
+      <button class="btn prepare {{ 'running' if ch.idx in running }}" type="button">
+        <span class="spin"></span><svg class="ico"><use href="#i-sparkles"/></svg>
+        <span class="label">{{ js_t.preparing if ch.idx in running else t('book.prepare') }}</span>
+      </button>
+      {% endif %}
+    </div>
+    <div class="err" hidden></div>
+  </article>
+  {% endfor %}
+</section>
+{% endblock %}
+{% block script %}
+<script>
+(() => {
+  const FILE = {{ f.id }};
+  const OPEN = {{ t('study.open') | tojson }}, PREPARE = {{ t('book.prepare') | tojson }};
+  const follow = (card, method) => {
+    const btn = card.querySelector(".prepare"), label = btn.querySelector(".label"), err = card.querySelector(".err");
+    const idx = card.dataset.idx;
+    btn.classList.add("running"); btn.disabled = true; err.hidden = true;
+    const tick = async first => {
+      try {
+        const r = await fetch(`/api/chapter/${FILE}/${idx}`, first && method === "POST"
+          ? { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" } : {});
+        const job = await r.json();
+        if (job.state === "done") {
+          card.classList.add("ready");
+          btn.outerHTML = `<a class="study-chip" href="/study/${FILE}/ch/${idx}"><svg class="ico"><use href="#i-sparkles"/></svg>${OPEN}</a>`;
+          return;
+        }
+        if (job.state === "running") {
+          label.textContent = T.preparing + (job.step ? " " + job.step : "");
+          return setTimeout(() => tick(false), 3000);
+        }
+        throw new Error(job.message || T.network);
+      } catch (e) {
+        btn.classList.remove("running"); btn.disabled = false; label.textContent = PREPARE;
+        err.textContent = e.message; err.hidden = false;
+      }
+    };
+    tick(true);
+  };
+  document.querySelectorAll(".chapter").forEach(card => {
+    const btn = card.querySelector(".prepare");
+    if (!btn) return;
+    btn.addEventListener("click", () => follow(card, "POST"));
+    if (btn.classList.contains("running")) follow(card, "GET");
+  });
+})();
+</script>
+{% endblock %}

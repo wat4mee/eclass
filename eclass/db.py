@@ -112,6 +112,11 @@ CREATE INDEX IF NOT EXISTS chunks_file ON chunks(file_id);
 -- keyword index; rowid = chunks.id
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(text, tokenize = 'porter unicode61');
 
+CREATE TABLE IF NOT EXISTS progress (     -- materials the student marked as studied
+    file_id     INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+    studied_at  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS study_i18n (   -- study packs translated for the dashboard language
     file_id     INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
     language    TEXT NOT NULL,

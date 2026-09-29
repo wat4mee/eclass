@@ -97,6 +97,10 @@ a.act-name:hover { color: var(--accent); }
         <div class="act-top">
           {% if a.type == "url" %}
             <a class="act-name" href="{{ a.url }}" target="_blank" rel="noopener">{{ a.name }}<svg class="ico"><use href="#i-external"/></svg></a>
+            {% set v = video.get(a.id) %}
+            {% if v and v.has_study %}<a class="study-chip" href="{{ url_for('study_page', file_id=v.file_id) }}"><svg class="ico"><use href="#i-sparkles"/></svg>{{ t('study.open') }}</a>
+            {% elif v and v.status == 'ok' %}<span class="muted small">{{ t('video.queued') }}</span>
+            {% elif v and v.status == 'none' %}<span class="muted small">{{ t('video.no_transcript') }}</span>{% endif %}
           {% elif a.type == "ubboard" %}
             <a class="act-name" href="{{ eclass_url }}/mod/ubboard/view.php?id={{ a.id }}" target="_blank" rel="noopener">{{ a.name }}<svg class="ico"><use href="#i-external"/></svg></a>
           {% elif a.type == "assign" %}
@@ -116,14 +120,15 @@ a.act-name:hover { color: var(--accent); }
           </div>
           {% endif %}
         {% endif %}
-        {% if files.get(a.id) %}
+        {% if files.get(a.id) and a.type != "url" %}
         <ul class="files">
           {% for f in files[a.id] %}
           <li class="file">
             <span class="ext ext-{{ f.filename | ext }}">{{ f.filename | ext }}</span>
             <a class="fname" href="{{ url_for('file_view', file_id=f.id) }}" target="_blank" title="{{ f.filename }}">{{ f.filename }}</a>
             <span class="muted small size">{{ f.size | size }}</span>
-            {% if f.has_study %}<a class="study-chip" href="{{ url_for('study_page', file_id=f.id) }}"><svg class="ico"><use href="#i-sparkles"/></svg>{{ t('study.open') }}</a>{% endif %}
+            {% if f.has_study %}<a class="study-chip" href="{{ url_for('study_page', file_id=f.id) }}"><svg class="ico"><use href="#i-sparkles"/></svg>{{ t('study.open') }}</a>
+            {% elif is_book(f.n_chars) %}<a class="study-chip" href="{{ url_for('book', file_id=f.id) }}"><svg class="ico"><use href="#i-book"/></svg>{{ t('book.chapters') }}</a>{% endif %}
           </li>
           {% endfor %}
         </ul>

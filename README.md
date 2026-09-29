@@ -24,12 +24,17 @@ cp .env.example .env        # keyin .env ni to'ldiring
 | O'zgaruvchi | Majburiy | Ma'nosi |
 |---|---|---|
 | `ECLASS_USER`, `ECLASS_PASS` | ha | eClass login va paroli |
-| `AI_PROVIDER` | yo'q | `groq` (sukut bo'yicha) yoki `ollama` |
+| `AI_PROVIDER` | yo'q | `auto` (sukut bo'yicha, pastga qarang), `groq`, yoki ro'yxat: `gemini,groq:openai/gpt-oss-120b,ollama` |
 | `GROQ_API_KEY` | AI uchun | https://console.groq.com dan bepul kalit |
+| `GEMINI_API_KEY` | yo'q | https://aistudio.google.com/apikey dan bepul kalit; `GEMINI_MODEL` sukut bo'yicha `gemini-3.8-flash` |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | yo'q | yo'q bo'lsa, Telegram eslatmalari jimgina o'tkazib yuboriladi |
 | `STUDY_LANGUAGE` | yo'q | o'quv to'plamlari tili: `uz` (sukut), `en`, `ru` |
 | `EMBED_THREADS` | yo'q | qidiruv indeksi uchun CPU yadrolari (sukut: 2) |
 | `FLASK_DEBUG` | yo'q | `1` bo'lsa Flask debug rejimi yoqiladi (sukut bo'yicha o'chiq) |
+
+**AI zanjiri (`AI_PROVIDER=auto`).** Bepul limitlar tugab qolmasligi uchun provayderlar navbat bilan ishlatiladi. Birining kunlik limiti tugasa, keyingisiga avtomatik o'tiladi:
+Groq `gpt-oss-120b` → Groq `qwen3.8-27b` → Groq `gpt-oss-20b` → Gemini (kalit bo'lsa) → Ollama (ishlayotgan bo'lsa).
+Groq'da har bir modelning o'z kunlik limiti bor (bepul tarifda kuniga 200 000 token).
 
 Telegram chat ID'ni topish: botingizga istalgan xabar yozing, keyin `.venv/bin/python notify.py --chat-id` ni ishga tushiring. Ulanganini `.venv/bin/python notify.py --test` bilan tekshirasiz.
 
@@ -67,12 +72,13 @@ Mac uxlab qolgan paytdagi ishga tushishlar uyg'ongandan keyin bittaga birlashadi
 ## Maxfiylik: qaysi ma'lumot qayerga ketadi
 
 - **eClass login va paroli** faqat `.env` da turadi va faqat https://eclass.inha.ac.kr ga yuboriladi. Ular hech qayerda logga yoki ekranga chiqmaydi.
-- **AI provayderiga (Groq, `openai/gpt-oss-120b` modeli) quyidagilar yuboriladi:**
+- **AI provayderlariga (Groq modellari va ulangan bo'lsa Gemini) quyidagilar yuboriladi:**
   - o'quv materiallaringizning matni (ma'ruza PDF/PPTX/DOCX fayllari, OCR qilingan sahifalar, video transkriptlari, topshiriq shartlari);
   - Shahzod AI'ga bergan savollaringiz, suhbatning oxirgi bir necha xabari va javob uchun topilgan parchalar;
   - tarjima uchun o'quv to'plamlari matni.
 
   Groq bu ma'lumotlarni o'z shartlari asosida qayta ishlaydi. Maxfiy material bo'lsa, `AI_PROVIDER=ollama` bilan lokal model ishlating.
+- **Gemini (Google) ulangan bo'lsa**, zanjir unga yetib kelganda xuddi shu ma'lumotlar Google'ga yuboriladi. **Gemini API'ning bepul tarifida Google yuborilgan ma'lumotlardan o'z mahsulotlarini yaxshilash uchun foydalanadi** (Google narxlar sahifasida "Used to improve our products: Yes" deb ko'rsatilgan). Buni istamasangiz, `GEMINI_API_KEY` ni olib tashlang yoki `AI_PROVIDER` ro'yxatidan `gemini` ni chiqaring.
 - **Qidiruv indeksi (embedding)** kompyuterning o'zida hisoblanadi (`BAAI/bge-small-en-v1.5`) va tashqariga chiqmaydi.
 - **Telegram'ga** faqat eslatma matnlari yuboriladi: kurs nomi, material yoki topshiriq nomi, muddat va baho.
 - **Barcha fayllar va baza** (`data/`) lokal saqlanadi va `.gitignore` da turadi.

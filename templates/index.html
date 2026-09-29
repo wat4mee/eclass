@@ -39,6 +39,25 @@
 .stat-num { font-size: 28px; font-weight: 800; line-height: 1; letter-spacing: -.03em; }
 .stat-label { font-size: 13px; color: var(--muted); font-weight: 600; margin-top: 4px; }
 
+.today { margin-bottom: 18px; }
+.today-grid { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 22px; }
+.today-col { display: grid; align-content: start; gap: 10px; min-width: 0; }
+.today-due { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 12px; transition: background .2s; }
+.today-due:hover { background: var(--surface-2); }
+.today-due .flag { width: 4px; align-self: stretch; border-radius: 4px; background: var(--tc); flex: none; }
+.today-due .grow { flex: 1; min-width: 0; display: grid; }
+.today-due b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.today-unread { display: grid; gap: 6px; padding: 14px; border-radius: 14px; border: 1px solid var(--line);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--c) 10%, var(--surface)), var(--surface)); }
+.u-title { font-weight: 800; font-size: 16px; }
+.u-title:hover { color: var(--accent); }
+.u-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.today-col.tip { padding: 14px 16px; border-radius: 14px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 14%, var(--surface)), color-mix(in srgb, var(--accent-2) 12%, var(--surface))); }
+.tip-text { font-size: 15px; font-weight: 600; line-height: 1.5; }
+.tip .btn { justify-self: start; }
+.studied-ico { width: 14px; height: 14px; color: var(--ok); vertical-align: -2px; stroke-width: 2.6; }
+@media (max-width: 900px) { .today-grid { grid-template-columns: 1fr; } }
 .grid-3 { display: grid; gap: 18px; grid-template-columns: 1.15fr 1fr 1fr; align-items: start; }
 .timeline { list-style: none; margin: 0; padding: 0 0 0 4px; position: relative; }
 .timeline::before { content: ""; position: absolute; left: 8px; top: 8px; bottom: 8px; width: 2px;
@@ -161,6 +180,42 @@
   </div>
 </section>
 
+<section class="card today reveal">
+  <div class="card-title"><h2><svg class="ico"><use href="#i-target"/></svg>{{ t('today.title') }}</h2><span class="muted small">{{ today }}</span></div>
+  <div class="today-grid">
+    <div class="today-col">
+      <span class="eyebrow">{{ t('today.deadlines') }}</span>
+      {% for d in plan.due %}
+      <a class="today-due" href="{{ eclass_url }}/mod/assign/view.php?id={{ d.activity_id }}" target="_blank" rel="noopener" style="--tc: {{ STATE_COLOR[d.state] }}">
+        <span class="flag"></span>
+        <span class="grow"><b>{{ d.name }}</b><span class="muted small">{{ d.course }} · {{ d.left or t('state.' ~ d.state) }}</span></span>
+        <span class="badge b-{{ d.state }}">{{ t('state.' ~ d.state) }}</span>
+      </a>
+      {% else %}<p class="muted small">{{ t('today.none_due') }} 🎉</p>{% endfor %}
+    </div>
+    <div class="today-col">
+      <span class="eyebrow">{{ t('today.unread') }}</span>
+      {% if plan.unread %}{% set u = plan.unread %}
+      <div class="today-unread" style="--c: {{ course_color(u.course_id) }}">
+        <a class="u-title" href="{{ url_for('study_page', file_id=u.id) }}">{{ u.activity }}</a>
+        <span class="muted small"><span class="dot" style="display: inline-block"></span> {{ u.course }}</span>
+        <div class="u-actions">
+          <a class="study-chip" href="{{ url_for('study_page', file_id=u.id) }}"><svg class="ico"><use href="#i-sparkles"/></svg>{{ t('study.open') }}</a>
+          <button class="chip studied-btn" type="button" data-file="{{ u.id }}"><svg class="ico"><use href="#i-check"/></svg><span>{{ js_t.studied_mark }}</span></button>
+        </div>
+      </div>
+      {% else %}<p class="muted small">{{ t('today.all_read') }}</p>{% endif %}
+    </div>
+    <div class="today-col tip">
+      <span class="eyebrow">{{ t('today.tip') }}</span>
+      {% if plan.tip %}
+      <p class="tip-text">{{ plan.tip[0] }}</p>
+      <a class="btn accent" href="{{ plan.tip[1] }}" {% if plan.tip[1].startswith('http') %}target="_blank" rel="noopener"{% endif %}>{{ t('tip.go') }}<svg class="ico"><use href="#i-arrow"/></svg></a>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
 <div class="grid-3">
   <section class="card reveal">
     <div class="card-title"><h2><svg class="ico"><use href="#i-task"/></svg>{{ t('home.assignments') }}</h2><span class="muted small">{{ t('home.unsubmitted') }}</span></div>
@@ -201,10 +256,11 @@
     <div class="mat" style="--c: {{ course_color(m.course_id) }}">
       <span class="ext ext-{{ m.filename | ext }}">{{ m.filename | ext }}</span>
       <div class="mat-body">
-        <a href="{{ url_for('file_view', file_id=m.id) }}" target="_blank" title="{{ m.filename }}">{{ m.activity }}</a>
+        <a href="{{ url_for('file_view', file_id=m.id) }}" target="_blank" title="{{ m.filename }}">{{ m.activity }}{% if m.studied %} <svg class="ico studied-ico"><use href="#i-check"/></svg>{% endif %}</a>
         <div class="meta"><span class="dot"></span>{{ m.course }}</div>
       </div>
-      {% if m.has_study %}<a class="study-chip" href="{{ url_for('study_page', file_id=m.id) }}"><svg class="ico"><use href="#i-sparkles"/></svg>{{ t('study.open') }}</a>{% endif %}
+      {% if m.has_study %}<a class="study-chip" href="{{ url_for('study_page', file_id=m.id) }}"><svg class="ico"><use href="#i-sparkles"/></svg>{{ t('study.open') }}</a>
+      {% elif is_book(m.n_chars) %}<a class="study-chip" href="{{ url_for('book', file_id=m.id) }}"><svg class="ico"><use href="#i-book"/></svg>{{ t('book.chapters') }}</a>{% endif %}
     </div>
     {% endfor %}
   </section>

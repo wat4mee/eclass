@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from eclass import db, extract, notify, rag, study, syncstatus, telegram
+from eclass import db, extract, notify, rag, study, syncstatus, telegram, videos
 from eclass.activities import (
     SUPPORTED_TYPES,
     parse_activity,
@@ -162,6 +162,8 @@ def _main():
     for course in courses:
         sync_course(client, conn, course, Path(args.files_dir), args.refresh, stats)
 
+    print("\nvideo transcripts...")
+    print(" ", videos.process(conn))
     print("\nextracting text...")
     print(" ", extract.extract_pending(conn))
     print("indexing for Q&A...")
