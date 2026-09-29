@@ -1,0 +1,18 @@
+# Hosted web app (Render). The Mac version uses requirements.txt instead.
+# Pinned to the versions tested locally; no fastembed/onnxruntime (too heavy for Render) and no macOS OCR.
+alembic==1.20.0
+beautifulsoup4==4.15.0
+cryptography==50.0.1
+flask==3.1.3
+flask-limiter==4.1.1
+flask-login==0.6.3
+flask-wtf==1.3.0
+gunicorn==26.2.0
+numpy==2.5.3
+psycopg[binary]==3.3.6
+pymupdf==1.28.2
+python-docx==1.2.0
+python-dotenv==1.2.3
+python-pptx==1.0.2
+requests==2.34.2
+sqlalchemy==2.1.1
