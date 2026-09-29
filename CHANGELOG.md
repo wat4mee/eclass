@@ -73,7 +73,7 @@ Commit'lar: `2b8111c` (0), `b784a02` (1), `256f98b` (2), `35e0808` (3), `5850a09
 
 ### Keyingi safar e'tibor bering
 - **Dashboard qayta ishga tushirilishi kerak:** `launchctl kickstart -k gui/$(id -u)/com.eclass.web`. Bu buyruq sessiyada bloklandi. Shu paytgacha 5050-portdagi dashboard eski kodda ishlaydi. Avtomatik sync va eslatmalar yangi kodni o'zi oladi.
-- **GitHub:** `origin/main` 10 ta commit orqada. HTTPS uchun login yo'q, SSH kalit (`~/.ssh/id_ed25519.pub`) GitHub'ga qo'shilmagan.
+- **GitHub:** bu bosqichlarning 6 ta commit'i hali GitHub'da yo'q (`origin/main` = `bd6d1a0`). Yuborish: `git push origin main`.
 - Groq, Telegram va Gemini kalitlarini almashtirish tavsiyasi hali ham amalda.
 - CSP sarlavhasi qo'shilmadi (sahifalarda inline skriptlar ko'p). `pip-audit` bilan kutubxonalarni tekshirish mumkin.
 - Model ba'zan LaTeX'ni xato yozadi (masalan `$[a, b$`). Bu modelning xatosi: matn yo'qolmaydi, lekin chiroyli chiqmaydi.
