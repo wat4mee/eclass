@@ -87,13 +87,32 @@ Mac uxlab qolgan paytdagi ishga tushishlar uyg'ongandan keyin bittaga birlashadi
 - **Barcha fayllar va baza** (`data/`) lokal saqlanadi va `.gitignore` da turadi.
 - **Dashboard** faqat `127.0.0.1` da tinglaydi, ya'ni boshqa qurilmalardan kirib bo'lmaydi. `/api/*` so'rovlari boshqa saytlardan qabul qilinmaydi.
 
-## Testlar
+## Testlarni ishga tushirish
+
+**Unit testlar (pytest).** Tez (1 soniyadan kam), internetsiz ishlaydi, haqiqiy bazaga va `.env` dagi kalitlarga tegmaydi:
+
+```bash
+.venv/bin/pip install -r requirements-dev.txt   # bir marta (pytest)
+.venv/bin/pytest                               # hammasi
+.venv/bin/pytest tests/test_ask.py -v          # bitta fayl, har bir test nomi bilan
+```
+
+| Fayl | Nimani tekshiradi |
+|---|---|
+| `tests/test_parsers.py` | eClass sahifalarini o'qish: kurslar, haftalar, faoliyatlar, topshiriq jadvali, fayl nomlari (`tests/fixtures/` dagi namuna HTML) |
+| `tests/test_db.py` | upsert'lar, sha256 bo'yicha dublikat fayllarni oldini olish, bir xil nomli fayllar ustma-ust yozilmasligi |
+| `tests/test_ask.py` | `/api/ask` soxta AI bilan: ko'pi bilan 3 manba, topilmasa manba yo'q, suhbat xotirasi, xato xabarlari, Origin/Host himoyasi |
+| `tests/test_answers.py` | formulalarni tiklash (`\frac`, `\to` …), javobdan `found`/`cited` so'zlarini olib tashlash, manba raqamlari |
+| `tests/test_search.py` | qidiruv indeksi va natijalar (soxta embedding bilan) |
+
+**Brauzer testlari (Playwright).** Ishlab turgan dashboard kerak; `chat` va `translate` haqiqiy AI'dan foydalanadi:
 
 ```bash
 .venv/bin/playwright install chromium    # bir marta
 .venv/bin/python tests/e2e.py smoke      # barcha sahifalar, 3 til, 1400px va 390px
-.venv/bin/python tests/e2e.py chat       # Shahzod AI (Groq tokenlari sarflanadi)
+.venv/bin/python tests/e2e.py chat       # Shahzod AI (AI tokenlari sarflanadi)
 .venv/bin/python tests/e2e.py all
+E2E_BASE=http://127.0.0.1:5099 .venv/bin/python tests/e2e.py smoke   # boshqa portdagi nusxani tekshirish
 ```
 
 ## Tuzilma

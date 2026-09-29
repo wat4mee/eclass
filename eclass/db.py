@@ -151,45 +151,53 @@ def connect(path):
     return conn
 
 
-def upsert_course(conn, course):
+def _exists(conn, sql: str, params: tuple) -> bool:
+    return conn.execute(sql, params).fetchone() is not None
+
+
+# "New" means the row did not exist before the upsert. (Comparing first_seen with last_seen was wrong when the
+# same item was stored twice within one second: both timestamps are whole seconds.)
+
+def upsert_course(conn, course: dict) -> bool:
+    """Insert or refresh a course; returns True if it was not seen before."""
+    is_new = not _exists(conn, "SELECT 1 FROM courses WHERE id = ?", (course["id"],))
     ts = now()
-    cur = conn.execute(
+    conn.execute(
         """INSERT INTO courses (id, name, code, professor, first_seen, last_seen)
            VALUES (:id, :name, :code, :professor, :ts, :ts)
            ON CONFLICT(id) DO UPDATE SET name=excluded.name, code=excluded.code,
-               professor=excluded.professor, last_seen=excluded.last_seen
-           RETURNING first_seen = last_seen AS is_new""",
+               professor=excluded.professor, last_seen=excluded.last_seen""",
         {**course, "ts": ts},
     )
-    return bool(cur.fetchone()["is_new"])
+    return is_new
 
 
-def upsert_section(conn, course_id, number, name):
+def upsert_section(conn, course_id: int, number: int, name: str | None) -> bool:
+    is_new = not _exists(conn, "SELECT 1 FROM sections WHERE course_id = ? AND number = ?", (course_id, number))
     ts = now()
-    cur = conn.execute(
+    conn.execute(
         """INSERT INTO sections (course_id, number, name, first_seen, last_seen)
            VALUES (?, ?, ?, ?, ?)
            ON CONFLICT(course_id, number) DO UPDATE SET name=excluded.name,
-               last_seen=excluded.last_seen
-           RETURNING first_seen = last_seen AS is_new""",
+               last_seen=excluded.last_seen""",
         (course_id, number, name, ts, ts),
     )
-    return bool(cur.fetchone()["is_new"])
+    return is_new
 
 
-def upsert_activity(conn, act):
+def upsert_activity(conn, act: dict) -> bool:
     """Insert or refresh an activity; returns True if it was not seen before."""
+    is_new = not _exists(conn, "SELECT 1 FROM activities WHERE id = ?", (act["id"],))
     ts = now()
-    cur = conn.execute(
+    conn.execute(
         """INSERT INTO activities (id, course_id, section, type, name, url, first_seen, last_seen)
            VALUES (:id, :course_id, :section, :type, :name, :url, :ts, :ts)
            ON CONFLICT(id) DO UPDATE SET course_id=excluded.course_id,
                section=excluded.section, type=excluded.type, name=excluded.name,
-               url=excluded.url, last_seen=excluded.last_seen
-           RETURNING first_seen = last_seen AS is_new""",
+               url=excluded.url, last_seen=excluded.last_seen""",
         {**act, "ts": ts},
     )
-    return bool(cur.fetchone()["is_new"])
+    return is_new
 
 
 def get_files(conn, activity_id):
