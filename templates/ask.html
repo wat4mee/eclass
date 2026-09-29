@@ -157,13 +157,16 @@ kbd { font: 700 11px var(--font); padding: 2px 7px; border-radius: 6px; border: 
   });
   document.getElementById("ask").addEventListener("submit", e => { e.preventDefault(); submit(); });
 
+  // KaTeX only finds a formula inside one text node, so line breaks inside a formula become spaces before the
+  // text is split into paragraphs and <br>s. An inline $...$ may cross a single line break, never a blank line.
+  const MATH = /\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)|\$(?:[^$\n]|\n(?!\n))+?\$/g;
   const formatAnswer = (text, id) => esc(text)
-    .replace(/\$\$([\s\S]+?)\$\$/g, m => m.replace(/\n/g, " "))   // keep display formulas in one text node
+    .replace(MATH, m => m.replace(/\s*\n\s*/g, " "))
     .split(/\n{2,}/).map((p, i) =>
       `<p style="animation-delay:${i * 110}ms">` + p
         .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
         .replace(/\n/g, "<br>")
-        .replace(/\[(\d+)\]/g, `<a class="cite" href="#${id}-src-$1" data-src="${id}-src-$1">$1</a>`) + "</p>").join("");
+        .replace(/(?<!\\)\[(\d+)\]/g, `<a class="cite" href="#${id}-src-$1" data-src="${id}-src-$1">$1</a>`) + "</p>").join("");
 
   const pageLabel = s => s.pages && s.pages.length > 1 ? tr("pages", { n: s.pages.join(", ") }) : tr("page", { n: s.page });
   const renderSources = (sources, id) => !sources.length ? "" : `<div class="sources">${sources.map(s => `

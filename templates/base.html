@@ -462,12 +462,14 @@ html.intro .intro-screen { position: fixed; inset: 0; z-index: 1000; display: gr
 
 <script>
 function renderMath(el) {
-  if (window.renderMathInElement) {
-    renderMathInElement(el, { delimiters: [
-      { left: "$$", right: "$$", display: true }, { left: "\\[", right: "\\]", display: true },
-      { left: "$", right: "$", display: false }, { left: "\\(", right: "\\)", display: false } ],
-      throwOnError: false, ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code", "option"] });
-  }
+  if (!window.renderMathInElement) return;
+  // A formula KaTeX cannot parse stays as its original text (auto-render catches the error and puts the
+  // source back), so nothing is ever blank; the reason goes to the console for debugging.
+  renderMathInElement(el, { delimiters: [
+    { left: "$$", right: "$$", display: true }, { left: "\\[", right: "\\]", display: true },
+    { left: "$", right: "$", display: false }, { left: "\\(", right: "\\)", display: false } ],
+    throwOnError: true, errorCallback: (msg, err) => console.warn(msg, err && err.message),
+    ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code", "option"] });
 }
 const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const T = {{ js_t | tojson }};

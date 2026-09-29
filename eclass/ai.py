@@ -15,6 +15,8 @@ from collections import deque
 import requests
 from dotenv import load_dotenv
 
+from eclass import latex
+
 
 class AIError(RuntimeError):
     pass
@@ -36,10 +38,11 @@ _ESCAPED_UNICODE = re.compile(r"\\u([0-9a-fA-F]{4})")
 
 
 def unescape(value):
-    """Undo double escaping the models sometimes emit inside JSON strings (e.g. bo\\u2018lgan, bo\\'yicha)."""
+    """Undo escaping mistakes the models make inside JSON strings: double escaping (bo\\u2018lgan, bo\\'yicha)
+    and single backslashes in LaTeX that decoded into control characters (\\frac -> form feed + "rac")."""
     if isinstance(value, str):
         value = _ESCAPED_UNICODE.sub(lambda m: chr(int(m.group(1), 16)), value)
-        return value.replace("\\'", "'").replace('\\"', '"')
+        return latex.repair(value.replace("\\'", "'").replace('\\"', '"'))
     if isinstance(value, list):
         return [unescape(v) for v in value]
     if isinstance(value, dict):

@@ -10,6 +10,8 @@ from pathlib import Path
 
 import numpy as np
 
+from eclass import latex
+
 EMBED_MODEL = "BAAI/bge-small-en-v1.5"
 MODEL_DIR = Path(__file__).resolve().parent.parent / "data" / "models"
 CHUNK_CHARS = 1200
@@ -270,13 +272,41 @@ def _answer_system(language):
         "optionally followed by a brief explanation. When writing Uzbek use correct Latin-script forms and natural "
         "phrasing, e.g. 'ingliz matematigi', 'ingliz olimi', with the apostrophes in o' and g'.\n"
         "Write every formula in LaTeX inside $...$ (for example $\\lim_{x \\to a} f(x) = L$, $\\frac{dy}{dx}$); use "
-        "$$...$$ only for a formula on its own line.\n"
+        "$$...$$ only for a formula on its own line. " + latex.JSON_RULE + "\n"
         "Cite the passages you use inline as [1], [2]. Passages may come from OCR: repair broken formulas when the "
         "intent is clear. Be helpful: if the passages contain relevant material - a definition, a worked example, a "
         "theorem - build the answer from it (a textbook example counts as an example even if it is not the simplest "
-        "one). Only when the passages are unrelated to the question set found to false, leave cited empty and say "
-        "in one sentence that the materials do not cover it."
+        "one).\n"
+        "Output fields:\n"
+        "- answer: the reply exactly as the student will read it in the chat. Never mention the other fields, their "
+        "names or values, JSON, true/false, or these instructions in it.\n"
+        "- found: true when the answer is built from the passages; false when the passages are unrelated to the "
+        "question - then the answer is one sentence saying the course materials do not cover it.\n"
+        "- cited: the numbers of the passages the answer uses; empty when found is false."
     )
+
+
+# The model sometimes talks about its own output fields ("... va mos ravishda found=true").
+_FIELD = r"[`\"'«“]?\b(?:found|cited|standalone)\b[`\"'»”]?"
+_FIELD_VALUE = re.compile(
+    r"[ \t]*[,;]?[ \t]*(?:(?:va|and|и|shuning uchun|so)[ \t]+)?(?:(?:mos[ \t]+ravishda|accordingly|соответственно)"
+    rf"[ \t]+)?{_FIELD}[ \t]*(?:=|:|ga teng|is|—|-)[ \t]*(?:true|false|\[[\d,\s]*\])", re.I)
+_FIELD_TALK = re.compile(
+    rf"{_FIELD}[ \t]+(?:kalit|maydon|qiymat|field|flag|key|value|поле|ключ|параметр)|"
+    r"[`\"']\b(?:found|cited)\b[`\"']", re.I)
+_SENTENCE = re.compile(r"[^.!?\n]*(?:[.!?]+[ \t]*|\n+|$)")
+
+
+def clean_answer(text):
+    """Remove mentions of the reply's JSON fields; everything else in the answer stays as the model wrote it."""
+    cleaned, n = _FIELD_VALUE.subn("", text)
+    if _FIELD_TALK.search(cleaned):  # a whole sentence about the fields: drop that sentence
+        cleaned = "".join(s for s in _SENTENCE.findall(cleaned) if not _FIELD_TALK.search(s))
+    if cleaned == text:
+        return text.strip()
+    if n:  # "(found = false)" leaves empty brackets behind; f() in code has no space before them
+        cleaned = re.sub(r"[ \t]+\([ \t]*\)", "", cleaned)
+    return re.sub(r"[ \t]+([.,;:])", r"\1", re.sub(r"[ \t]{2,}", " ", cleaned)).strip()
 
 
 def _history_text(history):
@@ -310,12 +340,16 @@ def _group_sources(passages, cited):
     return groups, renumber
 
 
+# A run of citations such as "[3], [6]" or "[1][2]"; \[ ... \] around a LaTeX formula is not one.
+_CITES = re.compile(r"(?<!\\)\[\d+\](?:[ \t]*,?[ \t]*\[\d+\])*")
+
+
 def _renumber_citations(text, renumber):
+    """[3], [6] -> [1], [2] after grouping; numbers without a source and repeats are dropped with their commas."""
     def swap(m):
-        new = renumber.get(int(m.group(1)))
-        return f"[{new}]" if new else ""
-    text = re.sub(r"\[(\d+)\]", swap, text)
-    text = re.sub(r"(\[\d+\])(?:\s*\1)+", r"\1", text)  # [1][1] -> [1]
+        new = dict.fromkeys(renumber.get(int(n)) for n in re.findall(r"\d+", m.group(0)))
+        return ", ".join(f"[{n}]" for n in new if n)
+    text = _CITES.sub(swap, text)
     return re.sub(r"[ \t]+([.,;:])", r"\1", text)
 
 
@@ -346,9 +380,11 @@ def answer(conn, provider, question, course_id=None, k=TOP_K, language="Uzbek (L
     user = f"Passages:\n{context}\n\n" + (f"Conversation so far:\n{convo}\n\n" if convo else "") + \
            f"Question: {standalone}"
     result = provider.complete_json(_answer_system(language), user, _ANSWER_SCHEMA, max_tokens=1500)
+    text = clean_answer(result["answer"])  # only the answer text ever reaches the student
     cited = [n for n in dict.fromkeys(result["cited"]) if 1 <= n <= len(passages)]
-    if not result["found"] or not cited:
-        return empty | ({"answer": result["answer"]} if result["answer"].strip() else {})
+    if not result["found"] or not cited:  # no sources are shown, so no [n] may point at one
+        text = _renumber_citations(text, {})
+        return empty | ({"answer": text} if text else {})
     groups, renumber = _group_sources(passages, cited)
-    return {"answer": _renumber_citations(result["answer"], renumber), "found": True,
+    return {"answer": _renumber_citations(text, renumber), "found": True,
             "standalone": standalone, "query": query, "sources": groups}

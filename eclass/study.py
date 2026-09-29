@@ -8,7 +8,7 @@ the daily quota resumes where it stopped.
 import json
 import os
 
-from . import db
+from . import db, latex
 from .ai import DailyLimitReached
 
 CHUNK_CHARS = 10_000      # ~3K tokens: prompt + answer must fit into 8K tokens/minute
@@ -65,7 +65,7 @@ def study_system(language):
         "every flashcard and quiz question must be answerable from the material itself. "
         "The text may come from OCR: silently repair broken formulas when the intent is clear.\n"
         "Write every formula in LaTeX inside $...$ (e.g. $\\lim_{x \\to a} f(x) = L$, $\\frac{dy}{dx}$). "
-        "Write naturally, not word for word; keep technical terms such as limit, derivative, class in English; "
+        + latex.JSON_RULE + " Write naturally, not word for word; keep technical terms such as limit, derivative, class in English; "
         "in Uzbek use correct Latin-script forms (e.g. 'ingliz matematigi', o' and g' with apostrophes).\n"
         "Produce:\n"
         "- summary: 120-250 words, the main ideas in logical order\n"

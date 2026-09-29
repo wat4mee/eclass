@@ -1,16 +1,17 @@
-"""Browser checks for the dashboard (needs the app running on 127.0.0.1:5050).
+"""Browser checks for the dashboard (needs the app running on 127.0.0.1:5050, or E2E_BASE=http://...).
 
     .venv/bin/python tests/e2e.py smoke        # every page, 3 languages, desktop + 390 px
     .venv/bin/python tests/e2e.py chat         # Shahzod AI: follow-up question, "no data", formulas
     .venv/bin/python tests/e2e.py translate    # study pack translation into English
     .venv/bin/python tests/e2e.py all
 """
+import os
 import re
 import sys
 
 from playwright.sync_api import sync_playwright
 
-BASE = "http://127.0.0.1:5050"
+BASE = os.getenv("E2E_BASE", "http://127.0.0.1:5050")
 PAGES = ["/", "/grades", "/ask", "/course/2539", "/course/2596", "/study/7", "/does-not-exist"]
 failures = []
 
