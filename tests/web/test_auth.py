@@ -116,7 +116,9 @@ def test_cookies_are_secure_http_only_and_same_site(app):
 def test_security_headers(client):
     headers = client.get("/login").headers
     policy = headers["Content-Security-Policy"]
-    assert "script-src 'self'" in policy and "frame-ancestors 'none'" in policy and "unsafe-inline" not in policy
+    directives = dict(d.strip().split(" ", 1) for d in policy.split(";"))
+    assert directives["script-src"] == "'self'" and directives["frame-ancestors"] == "'none'"  # no inline scripts
+    assert [d for d, v in directives.items() if "unsafe" in v] == ["style-src-attr"]  # only KaTeX's style attributes
     assert headers["X-Frame-Options"] == "DENY" and headers["X-Content-Type-Options"] == "nosniff"
     assert headers["Referrer-Policy"] == "same-origin"
 

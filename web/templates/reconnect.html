@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}{{ t('web.reconnect.title') }} · {{ app_name }}{% endblock %}
+{% block content %}
+<section class="card auth-card solo reveal">
+  <span class="logo auth-logo"><svg class="ico"><use href="#i-flip"/></svg></span>
+  <h2>{{ t('web.reconnect.title') }}</h2>
+  <p class="muted small">{{ t('web.reconnect.lead') }}</p>
+  {% if error %}<div class="flash flash-error" role="alert">{{ error }}</div>{% endif %}
+  <form method="post" action="{{ url_for('auth.reconnect') }}" class="form">
+    {{ form.csrf_token }}
+    <label>{{ t('web.login.username') }}
+      <input type="text" value="{{ current_user.eclass_username }}" autocomplete="username" readonly>
+    </label>
+    <label>{{ t('web.login.password') }}
+      <input name="password" type="password" required maxlength="256" autocomplete="current-password" autofocus>
+    </label>
+    <button class="btn accent" type="submit">{{ t('web.sync.reconnect') }}<svg class="ico"><use href="#i-arrow"/></svg></button>
+  </form>
+  <p class="note"><svg class="ico"><use href="#i-lock"/></svg><span>{{ t('web.login.how') }}</span></p>
+</section>
+{% endblock %}

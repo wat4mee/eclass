@@ -351,22 +351,25 @@ def _renumber_citations(text: str, renumber: dict[int, int]) -> str:
 
 
 def answer(conn, provider, question, course_id=None, k=TOP_K, language="Uzbek (Latin script)",
-           history=None, not_found=None):
+           history=None, not_found=None, search_fn=None, course_name=None):
     """Answer a question (with optional chat history) from the course materials.
 
     Returns {answer, found, standalone, query, sources}; sources is empty when nothing relevant was found.
+    search_fn(query) -> passages replaces the local SQLite search (the hosted version searches Postgres);
+    course_name then names the selected course.
     """
     not_found = not_found or i18n.t(i18n.DEFAULT, "ask.not_found")
     convo = _history_text(history)
     prompt = (f"Conversation so far:\n{convo}\n\n" if convo else "") + f"Latest message: {question}"
-    if course_id:
+    if course_id and course_name is None and conn is not None:
         course = conn.execute("SELECT name FROM courses WHERE id = ?", (course_id,)).fetchone()
-        if course:
-            prompt = f"Course: {course['name']}\n{prompt}"
+        course_name = course["name"] if course else None
+    if course_name:
+        prompt = f"Course: {course_name}\n{prompt}"
     ctx = provider.complete_json(_REWRITE_SYSTEM, prompt, _CONTEXT_SCHEMA, max_tokens=400)
     standalone, query = ctx["standalone"].strip() or question, ctx["query"]
 
-    passages = search(conn, query, course_id, k)
+    passages = search_fn(query) if search_fn else search(conn, query, course_id, k)
     top = max((p["sim"] for p in passages), default=0.0)
     passages = [p for p in passages if p["sim"] >= MIN_SIM and p["sim"] >= top - SIM_WINDOW]
     empty = {"answer": not_found, "found": False, "standalone": standalone, "query": query, "sources": []}

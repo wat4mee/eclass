@@ -21,6 +21,7 @@ from flask import Flask, abort, g, jsonify, redirect, render_template, request, 
 from eclass import chapters, config, db, i18n, rag, search, study, syncstatus, videos
 from eclass.ai import AIError, AITimeout, DailyLimitReached, get_provider
 from eclass.config import DATA_DIR, DB_PATH, ECLASS_URL, ROOT
+from eclass.grades import grade_percent, grade_points
 from eclass.notify import is_submitted, parse_due
 
 FILES_DIR = config.FILES_DIR.resolve()
@@ -145,17 +146,6 @@ def deadline(row, now):
         "days_left": remaining.days if remaining else 0,
         "hours_left": int(remaining.total_seconds() // 3600) if remaining else 0,
     }
-
-
-def grade_points(grade):
-    """'22.00 / 25.00' -> (22.0, 25.0); None when the grade is not a score."""
-    m = re.match(r"\s*([\d.]+)\s*/\s*([\d.]+)", grade or "")
-    return (float(m.group(1)), float(m.group(2))) if m and float(m.group(2)) else None
-
-
-def grade_percent(grade):
-    points = grade_points(grade)
-    return round(100 * points[0] / points[1]) if points else None
 
 
 WEEK_RE = re.compile(r"^(\d+)\s*Week\s*\[(\d{1,2})\s+([A-Za-z]+)\s*-\s*(\d{1,2})\s+([A-Za-z]+)\]", re.I)

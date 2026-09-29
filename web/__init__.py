@@ -5,21 +5,29 @@
 The single-user Mac version (app.py, SQLite) is separate and unchanged; both reuse the eclass/ package.
 """
 import logging
+from pathlib import PurePosixPath
+from urllib.parse import urlparse
 
 from flask import Flask, abort, g, jsonify, render_template, request, url_for
+from flask_login import current_user
 from flask_wtf.csrf import CSRFError
 from sqlalchemy import text
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+from eclass import i18n as base_i18n
+from eclass.config import ECLASS_URL
+
 from web import config, crypto, db, i18n, redact
+from web import dashboard as data
 from web.extensions import csrf, limiter, login_manager
 from web.models import User
 
 log = logging.getLogger("web")
 
 # No inline scripts or styles, no third-party origins, never inside a frame.
-CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; "
-       "connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; "
+       "font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; "
+       "frame-ancestors 'none'")  # style attributes only: KaTeX positions formula parts with them
 
 
 def create_app(overrides: dict | None = None) -> Flask:
@@ -51,8 +59,8 @@ def create_app(overrides: dict | None = None) -> Flask:
         except ValueError:
             return None
 
-    from web.views import account, auth, pages
-    for blueprint in (auth.bp, account.bp, pages.bp):
+    from web.views import account, ask, auth, dashboard, pages
+    for blueprint in (auth.bp, account.bp, pages.bp, dashboard.bp, ask.bp):
         app.register_blueprint(blueprint)
 
     @app.before_request
@@ -63,7 +71,8 @@ def create_app(overrides: dict | None = None) -> Flask:
 
     @app.after_request
     def _headers(resp):
-        resp.headers.setdefault("Content-Security-Policy", CSP)
+        if resp.mimetype == "text/html":  # pages only: a PDF opened from /file keeps the browser's own viewer
+            resp.headers.setdefault("Content-Security-Policy", CSP)
         resp.headers.setdefault("X-Frame-Options", "DENY")
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
         resp.headers.setdefault("Referrer-Policy", "same-origin")
@@ -79,11 +88,50 @@ def create_app(overrides: dict | None = None) -> Flask:
             return url_for(request.endpoint, **(request.view_args or {}), lang=code)
         return url_for("auth.login", lang=code)
 
+    def course_color(course_id: int) -> str:
+        if "colors" not in g:
+            g.colors = data.colors(db.session(), current_user.id) if current_user.is_authenticated else {}
+        return g.colors.get(course_id, data.COURSE_COLORS[0])
+
+    def sync_pill() -> dict:
+        """The student's last sync for the top bar; a page (an error page too) still renders without it."""
+        try:
+            return dashboard.sync_status(db.session(), current_user.id)
+        except Exception:
+            log.exception("sync status unavailable")
+            return {"state": "none", "message": "", "short": "—"}
+
     @app.context_processor
     def _template_globals():
         lang = g.get("lang", i18n.DEFAULT)
         return {"t": lambda key, **kw: i18n.t(lang, key, **kw), "lang": lang, "langs": i18n.LANGS,
-                "lang_url": lang_url, "app_name": app.config["APP_NAME"]}
+                "lang_url": lang_url, "app_name": app.config["APP_NAME"], "eclass_url": ECLASS_URL,
+                "has_text": lambda key: key in i18n.S or key in base_i18n.S,
+                "pl": lambda n, word: base_i18n.plural(lang, n, word), "js_t": base_i18n.js_strings(lang),
+                "course_color": course_color, "sync_pill": sync_pill}
+
+    @app.template_filter("web_link")
+    def _web_link(url: str | None) -> str:
+        """Only http(s) links from eClass content become clickable (never javascript: or data:)."""
+        return url if url and urlparse(url).scheme in ("http", "https") else "#"
+
+    @app.template_filter("dt")
+    def _dt(value) -> str:
+        return base_i18n.short_date(g.get("lang", i18n.DEFAULT), value.astimezone(data.TZ)) if value else "—"
+
+    @app.template_filter("ext")
+    def _ext(name: str) -> str:
+        return PurePosixPath(name or "").suffix.lstrip(".").upper()[:4] or "FILE"
+
+    @app.template_filter("size")
+    def _size(n: int | None) -> str:
+        if not n:
+            return ""
+        for unit in ("B", "KB", "MB"):
+            if n < 1024:
+                return f"{n:.0f} {unit}"
+            n /= 1024
+        return f"{n:.1f} GB"
 
     def error_page(code: int, title_key: str, text_key: str):
         lang = g.get("lang", i18n.DEFAULT)

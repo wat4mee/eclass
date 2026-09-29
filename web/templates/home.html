@@ -1,7 +1,154 @@
 {% extends "base.html" %}
+{% set STATE_COLOR = {"overdue": "var(--bad)", "soon": "var(--warn)", "upcoming": "var(--accent-2)",
+                      "nodate": "var(--idle)", "done": "var(--ok)"} %}
+{% set C = 376.99 %}
 {% block content %}
+{% if status.state in ('error', 'expired') %}
+<div class="sync-alert" role="alert">
+  <span class="sa-ico"><svg class="ico"><use href="#i-x"/></svg></span>
+  <div>{{ status.message }}</div>
+  {% if status.state == 'expired' %}<a class="btn small" href="{{ url_for('auth.reconnect') }}">{{ t('web.sync.reconnect') }}</a>{% endif %}
+</div>
+{% elif status.state in ('running', 'none') %}
+<div class="sync-note reveal" role="status"><span class="sync-spin"></span>{{ t('web.sync.running') if status.state == 'running' else t('web.home.soon') }}</div>
+{% endif %}
+
 <section class="hero">
-  <h1 class="display">{{ t('web.home.hello', name=current_user.display_name or current_user.eclass_username) }}</h1>
-  <p class="muted">{{ t('web.home.soon') }}</p>
+  <div class="hero-text reveal">
+    <span class="eyebrow">{{ today }} · {{ current_user.display_name or current_user.eclass_username }}</span>
+    <h1 class="display">{{ greeting }},<br><em>{{ t('home.tagline') }}</em></h1>
+    <p class="lead">
+      {% if stats.pending %}{{ t('home.pending', n=stats.pending, word=pl(stats.pending, 'assignment')) | safe }}{% else %}{{ t('home.all_done') }}{% endif %}
+      · <b>{{ stats.courses }}</b> {{ pl(stats.courses, 'course') }}
+    </p>
+    <div class="hero-actions">
+      <a class="btn accent" href="{{ url_for('ask.ask_page') }}"><svg class="ico"><use href="#i-sparkles"/></svg>{{ t('nav.ai') }}</a>
+      <a class="btn" href="{{ url_for('dashboard.grades') }}"><svg class="ico"><use href="#i-award"/></svg>{{ t('nav.grades') }}</a>
+    </div>
+  </div>
+
+  {% if next_due %}
+  {% set d = next_due %}
+  <a class="card lift next reveal" href="{{ d.url | web_link }}" target="_blank" rel="noopener noreferrer"
+     style="--c: {{ course_color(d.course_id) }}; --rc: {{ STATE_COLOR[d.state] }}">
+    <div class="ring-wrap">
+      <svg class="ring" viewBox="0 0 140 140" aria-hidden="true">
+        <circle class="ring-bg" cx="70" cy="70" r="60"/>
+        <circle class="ring-val" cx="70" cy="70" r="60" style="--off: {{ '%.2f' % (C * (1 - d.ring)) }}"/>
+      </svg>
+      <div class="ring-center">
+        {% if d.days_left %}<span class="ring-num serif">{{ d.days_left }}</span><span class="eyebrow">{{ t('unit.days') }}</span>
+        {% else %}<span class="ring-num serif">{{ d.hours_left }}</span><span class="eyebrow">{{ t('unit.hours') }}</span>{% endif %}
+      </div>
+    </div>
+    <div class="next-body">
+      <span class="eyebrow"><svg class="ico"><use href="#i-clock"/></svg>{{ t('home.next_due') }}</span>
+      <h2>{{ d.name }}</h2>
+      <span class="chip" style="justify-self: start"><span class="dot"></span>{{ d.course }}</span>
+      <div class="countdown num" data-due="{{ d.due_iso }}"></div>
+      <span class="muted small">{{ t('home.until', date=d.due | dt) }}</span>
+    </div>
+  </a>
+  {% else %}
+  <div class="card next reveal" style="--rc: var(--ok)">
+    <div class="empty-state" style="width: 100%">
+      <svg class="ico"><use href="#i-check"/></svg>
+      <strong style="color: var(--text); font-size: 18px">{{ t('home.no_deadlines') }}</strong>
+      <span>{{ t('home.no_deadlines_hint') }}</span>
+    </div>
+  </div>
+  {% endif %}
+</section>
+
+<section class="stats">
+  <div class="card stat reveal" style="--sc: var(--warn)">
+    <span class="stat-ico"><svg class="ico lg"><use href="#i-task"/></svg></span>
+    <div><div class="stat-num num" data-count="{{ stats.pending }}">{{ stats.pending }}</div><div class="stat-label">{{ t('stat.pending') }}</div></div>
+  </div>
+  <div class="card stat reveal" style="--sc: var(--ok)">
+    <span class="stat-ico"><svg class="ico lg"><use href="#i-award"/></svg></span>
+    <div>
+      {% if stats.avg is not none %}<div class="stat-num num" data-count="{{ stats.avg }}" data-suffix="%">{{ stats.avg }}%</div>
+      {% else %}<div class="stat-num">—</div>{% endif %}
+      <div class="stat-label">{{ t('stat.avg') }}</div>
+    </div>
+  </div>
+  <div class="card stat reveal" style="--sc: var(--info)">
+    <span class="stat-ico"><svg class="ico lg"><use href="#i-file"/></svg></span>
+    <div><div class="stat-num num" data-count="{{ stats.materials }}">{{ stats.materials }}</div><div class="stat-label">{{ t('stat.materials') }}</div></div>
+  </div>
+  <div class="card stat reveal" style="--sc: var(--accent)">
+    <span class="stat-ico"><svg class="ico lg"><use href="#i-book"/></svg></span>
+    <div><div class="stat-num num" data-count="{{ stats.courses }}">{{ stats.courses }}</div><div class="stat-label">{{ t('home.courses') }}</div></div>
+  </div>
+</section>
+
+<div class="grid-3">
+  <section class="card reveal">
+    <div class="card-title"><h2><svg class="ico"><use href="#i-task"/></svg>{{ t('home.assignments') }}</h2><span class="muted small">{{ t('home.unsubmitted') }}</span></div>
+    {% if pending %}
+    <ol class="timeline">
+      {% for d in pending %}
+      <li class="t-{{ d.state }}" style="--tc: {{ STATE_COLOR[d.state] }}; --c: {{ course_color(d.course_id) }}">
+        <span class="t-dot"></span>
+        <div>
+          <a href="{{ d.url | web_link }}" target="_blank" rel="noopener noreferrer">{{ d.name }}</a>
+          <div class="meta"><span class="dot"></span>{{ d.course }}{% if d.due %} · {{ d.due | dt }}{% endif %}{% if d.left %} · <b style="color: var(--text)">{{ d.left }}</b>{% endif %}</div>
+        </div>
+        <span class="badge b-{{ d.state }}">{{ t('state.' ~ d.state) }}</span>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <div class="empty-state"><svg class="ico"><use href="#i-check"/></svg>{{ t('home.everything_submitted') }}</div>
+    {% endif %}
+  </section>
+
+  <section class="card reveal">
+    <div class="card-title"><h2><svg class="ico"><use href="#i-award"/></svg>{{ t('nav.grades') }}</h2><a class="back" href="{{ url_for('dashboard.grades') }}">{{ t('home.all') }}<svg class="ico"><use href="#i-arrow"/></svg></a></div>
+    {% for d in graded %}
+    <div class="grade" style="--c: {{ course_color(d.course_id) }}; --i: {{ loop.index }}">
+      <div class="grade-top"><span class="grade-name">{{ d.name }}</span>{% if d.pct is not none %}<b class="num">{{ d.pct }}%</b>{% endif %}</div>
+      {% if d.pct is not none %}<div class="bar-track"><span style="--w: {{ d.pct }}%"></span></div>{% endif %}
+      <div class="meta" style="margin-top: 6px"><span class="dot"></span>{{ d.course }} · {{ d.grade }}</div>
+    </div>
+    {% else %}
+    <div class="empty-state"><svg class="ico"><use href="#i-clock"/></svg>{{ t('home.no_grades') }}</div>
+    {% endfor %}
+  </section>
+
+  <section class="card reveal">
+    <div class="card-title"><h2><svg class="ico"><use href="#i-file"/></svg>{{ t('home.new_materials') }}</h2></div>
+    {% for m in materials %}
+    <div class="mat" style="--c: {{ course_color(m.course_id) }}">
+      <span class="ext ext-{{ m.filename | ext }}">{{ m.filename | ext }}</span>
+      <div class="mat-body">
+        <a href="{{ url_for('dashboard.file', material_id=m.id) }}" target="_blank" rel="noopener" title="{{ m.filename }}">{{ m.activity or m.filename }}</a>
+        <div class="meta"><span class="dot"></span>{{ m.course }}</div>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty-state"><svg class="ico"><use href="#i-file"/></svg>{{ t('web.home.empty') }}</div>
+    {% endfor %}
+  </section>
+</div>
+
+<div class="section-head reveal"><h2>{{ t('home.courses') }}</h2><span class="muted small">{{ courses | length }} {{ pl(courses | length, 'course') }}</span></div>
+<section class="courses">
+  {% for c in courses %}
+  <a class="card lift course-card reveal" href="{{ url_for('dashboard.course', course_id=c.id) }}" style="--c: {{ course_color(c.id) }}">
+    <span class="stripe"></span>
+    <svg class="ico cc-go"><use href="#i-arrow"/></svg>
+    <span class="cc-icon"><svg class="ico lg"><use href="#i-book"/></svg></span>
+    <h3>{{ c.name }}</h3>
+    <span class="muted small">{{ c.professor or "" }}</span>
+    <div class="cc-stats">
+      <span><b class="num">{{ c.n_materials }}</b> {{ pl(c.n_materials, 'material') }}</span>
+      <span><b class="num">{{ c.n_assign }}</b> {{ pl(c.n_assign, 'assignment') }}</span>
+    </div>
+  </a>
+  {% else %}
+  <p class="muted">{{ t('web.home.empty') }}</p>
+  {% endfor %}
 </section>
 {% endblock %}

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% set TYPE = {"ubfile": ("i-file", "#60a5fa"), "folder": ("i-folder", "#f59e0b"), "url": ("i-play", "#f43f5e"),
+               "assign": ("i-task", "#a78bfa"), "ubboard": ("i-board", "#94a3b8")} %}
+{% block title %}{{ course.name }} · {{ app_name }}{% endblock %}
+{% block content %}
+{% set color = course_color(course.id) %}
+<section class="card course-hero reveal" style="--c: {{ color }}">
+  <a class="back" href="{{ url_for('dashboard.home') }}"><svg class="ico"><use href="#i-back"/></svg>{{ t('web.nav.home') }}</a>
+  <h1 class="display">{{ course.name }}</h1>
+  <p class="muted">{{ course.professor or "" }}</p>
+  <div class="hero-meta">
+    <span class="chip"><svg class="ico" style="width: 15px; height: 15px"><use href="#i-file"/></svg><b class="num" data-count="{{ counts.files }}">{{ counts.files }}</b> {{ pl(counts.files, 'material') }}</span>
+    <span class="chip"><svg class="ico" style="width: 15px; height: 15px"><use href="#i-task"/></svg><b class="num" data-count="{{ counts.assign }}">{{ counts.assign }}</b> {{ pl(counts.assign, 'assignment') }}</span>
+  </div>
+  <div class="hero-actions">
+    <a class="btn accent" href="{{ url_for('ask.ask_page', course=course.id) }}"><svg class="ico"><use href="#i-sparkles"/></svg>{{ t('course.ask') }}</a>
+    <a class="btn" href="{{ eclass_url }}/course/view.php?id={{ course.id }}" target="_blank" rel="noopener noreferrer">{{ t('course.open_eclass') }}<svg class="ico"><use href="#i-external"/></svg></a>
+  </div>
+</section>
+
+{% if weeks %}
+<nav class="week-nav reveal" style="--c: {{ color }}">
+  {% for w in weeks %}<a href="#w{{ w.number }}" class="{{ 'now' if w.current }}">{{ w.title }}</a>{% endfor %}
+</nav>
+{% endif %}
+
+<div class="weeks" style="--c: {{ color }}">
+{% for w in weeks %}
+<section class="card week reveal {{ 'current' if w.current }}" id="w{{ w.number }}">
+  <header class="week-head">
+    <span class="wk-num">{{ w.title }}</span>
+    {% if w.range %}<span class="muted small">{{ w.range }}</span>{% endif %}
+    {% if w.current %}<span class="now-badge">{{ t('week.current') }}</span>{% endif %}
+  </header>
+  <ul class="acts">
+    {% for a in w.activities %}
+    {% set ty = TYPE.get(a.type, ("i-file", "#94a3b8")) %}
+    <li class="act" style="--tc: {{ ty[1] }}">
+      <span class="act-ico"><svg class="ico lg"><use href="#{{ ty[0] }}"/></svg></span>
+      <div style="min-width: 0">
+        <span class="kind">{{ t('type.' ~ a.type) if has_text('type.' ~ a.type) else a.type }}</span>
+        <div class="act-top">
+          {% if a.type in ('url', 'assign', 'ubboard') and a.url %}
+          <a class="act-name" href="{{ a.url | web_link }}" target="_blank" rel="noopener noreferrer">{{ a.name }}<svg class="ico"><use href="#i-external"/></svg></a>
+          {% else %}
+          <span class="act-name">{{ a.name }}</span>
+          {% endif %}
+          {% set d = assignments.get(a.id) %}
+          {% if d %}<span class="badge b-{{ d.state }}">{{ t('state.' ~ d.state) }}</span>{% endif %}
+        </div>
+        {% if d %}
+        <div class="meta">
+          {% if d.due %}{{ t('assign.due', date=d.due | dt) }}{% if d.left %} · <b style="color: var(--text)">{{ t('assign.left', t=d.left) }}</b>{% endif %}{% else %}{{ t('assign.no_due') }}{% endif %}
+          {% if d.grade %} · <b style="color: var(--text)">{{ t('assign.grade', g=d.grade) }}</b>{% endif %}
+        </div>
+        {% endif %}
+        {% if files.get(a.id) and a.type != 'url' %}
+        <ul class="files">
+          {% for f in files[a.id] %}
+          <li class="file">
+            <span class="ext ext-{{ f.filename | ext }}">{{ f.filename | ext }}</span>
+            <a class="fname" href="{{ url_for('dashboard.file', material_id=f.id) }}" target="_blank" rel="noopener" title="{{ f.filename }}">{{ f.filename }}</a>
+            <span class="muted small size">{{ f.size | size }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% else %}
+<div class="card empty-state">{{ t('web.home.empty') }}</div>
+{% endfor %}
+</div>
+{% endblock %}

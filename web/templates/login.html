@@ -1,27 +1,36 @@
 {% extends "base.html" %}
 {% block title %}{{ t('web.login.title') }} · {{ app_name }}{% endblock %}
 {% block body_class %}auth{% endblock %}
-{% block main_class %}auth-main{% endblock %}
 {% block content %}
-<section class="auth-card card">
-  <div class="wordmark"><span class="mark" aria-hidden="true"></span>{{ app_name }}</div>
-  <p class="tagline">{{ t('web.tagline') }}</p>
-  <p class="unofficial">{{ t('web.disclaimer') }}</p>
+<div class="auth-wrap">
+  <section class="auth-hero">
+    <span class="chip unofficial reveal"><span class="dot" style="--c: var(--accent-2)"></span>{{ t('web.disclaimer') }}</span>
+    <h1 class="display reveal">{{ t('web.login.hero') | safe }}</h1>
+    <p class="lead reveal">{{ t('web.tagline') }}</p>
+    <ul class="auth-points">
+      <li class="reveal" style="--pc: var(--warn)"><span class="pi"><svg class="ico"><use href="#i-clock"/></svg></span>{{ t('web.login.point.deadlines') }}</li>
+      <li class="reveal" style="--pc: var(--ok)"><span class="pi"><svg class="ico"><use href="#i-award"/></svg></span>{{ t('web.login.point.grades') }}</li>
+      <li class="reveal" style="--pc: var(--accent)"><span class="pi"><svg class="ico"><use href="#i-sparkles"/></svg></span>{{ t('web.login.point.ai') }}</li>
+    </ul>
+  </section>
 
-  <h1>{{ t('web.login.title') }}</h1>
-  <p class="muted">{{ t('web.login.lead') }}</p>
-  {% if error %}<div class="flash flash-error" role="alert">{{ error }}</div>{% endif %}
-  <form method="post" action="{{ url_for('auth.login') }}" class="form" autocomplete="on">
-    {{ form.csrf_token }}
-    <label>{{ t('web.login.username') }}
-      <input name="username" type="text" value="{{ form.username.data or '' }}" required maxlength="100"
-             autocomplete="username" autocapitalize="none" spellcheck="false" autofocus>
-    </label>
-    <label>{{ t('web.login.password') }}
-      <input name="password" type="password" required maxlength="256" autocomplete="current-password">
-    </label>
-    <button class="btn primary" type="submit">{{ t('web.login.submit') }}</button>
-  </form>
-  <p class="note">{{ t('web.login.how') }} <a href="{{ url_for('pages.privacy') }}">{{ t('web.nav.privacy') }}</a></p>
-</section>
+  <section class="card auth-card reveal">
+    <span class="logo auth-logo"><svg class="ico"><use href="#i-layers"/></svg></span>
+    <h2>{{ t('web.login.title') }}</h2>
+    <p class="muted small">{{ t('web.login.lead') }}</p>
+    {% if error %}<div class="flash flash-error" role="alert">{{ error }}</div>{% endif %}
+    <form method="post" action="{{ url_for('auth.login') }}" class="form" autocomplete="on">
+      {{ form.csrf_token }}
+      <label>{{ t('web.login.username') }}
+        <input name="username" type="text" value="{{ form.username.data or '' }}" required maxlength="100"
+               autocomplete="username" autocapitalize="none" spellcheck="false" autofocus>
+      </label>
+      <label>{{ t('web.login.password') }}
+        <input name="password" type="password" required maxlength="256" autocomplete="current-password">
+      </label>
+      <button class="btn accent" type="submit">{{ t('web.login.submit') }}<svg class="ico"><use href="#i-arrow"/></svg></button>
+    </form>
+    <p class="note"><svg class="ico"><use href="#i-lock"/></svg><span>{{ t('web.login.how') }} <a href="{{ url_for('pages.privacy') }}">{{ t('web.nav.privacy') }}</a></span></p>
+  </section>
+</div>
 {% endblock %}

@@ -1,21 +1,39 @@
 {% extends "base.html" %}
 {% block title %}{{ t('web.account.title') }} · {{ app_name }}{% endblock %}
+{% block main_class %}narrow{% endblock %}
 {% block content %}
-<h1 class="display">{{ t('web.account.title') }}</h1>
+<header class="page-head reveal">
+  <span class="eyebrow">{{ app_name }}</span>
+  <h1 class="display">{{ t('web.account.title') }}</h1>
+</header>
 
-<section class="card">
+<section class="card account-card reveal">
+  <div class="who">
+    <span class="avatar-lg">{{ (current_user.display_name or current_user.eclass_username)[:1] | upper }}</span>
+    <div>
+      <b>{{ current_user.display_name or current_user.eclass_username }}</b>
+      <div class="muted small">eClass</div>
+    </div>
+    <form method="post" action="{{ url_for('auth.logout') }}" class="who-out">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn small" type="submit"><svg class="ico"><use href="#i-logout"/></svg>{{ t('web.nav.logout') }}</button>
+    </form>
+  </div>
   <dl class="facts">
     <dt>{{ t('web.account.username') }}</dt><dd>{{ current_user.eclass_username }}</dd>
     <dt>{{ t('web.account.joined') }}</dt><dd>{{ current_user.created_at.strftime('%Y-%m-%d') }}</dd>
-    {% if current_user.last_login_at %}<dt>{{ t('web.account.last_login') }}</dt><dd>{{ current_user.last_login_at.strftime('%Y-%m-%d %H:%M UTC') }}</dd>{% endif %}
+    {% if current_user.last_login_at %}<dt>{{ t('web.account.last_login') }}</dt><dd>{{ current_user.last_login_at | dt }}</dd>{% endif %}
   </dl>
-  <h2>{{ t('web.account.stored') }}</h2>
-  <p class="muted">{{ t('web.account.stored_text') }} <a href="{{ url_for('pages.privacy') }}">{{ t('web.nav.privacy') }}</a></p>
 </section>
 
-<section class="card danger-zone" id="delete">
-  <h2>{{ t('web.delete.title') }}</h2>
-  <p>{{ t('web.delete.text') }}</p>
+<section class="card reveal">
+  <div class="card-title"><h2><svg class="ico"><use href="#i-shield"/></svg>{{ t('web.account.stored') }}</h2></div>
+  <p class="muted">{{ t('web.account.stored_text') }} <a class="link" href="{{ url_for('pages.privacy') }}">{{ t('web.nav.privacy') }}</a></p>
+</section>
+
+<section class="card danger-zone reveal" id="delete">
+  <div class="card-title"><h2><svg class="ico"><use href="#i-x"/></svg>{{ t('web.delete.title') }}</h2></div>
+  <p class="muted">{{ t('web.delete.text') }}</p>
   {% if error %}<div class="flash flash-error" role="alert">{{ error }}</div>{% endif %}
   <form method="post" action="{{ url_for('account.delete') }}" class="form">
     {{ form.csrf_token }}

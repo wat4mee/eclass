@@ -1,4 +1,5 @@
 """Text extraction from downloaded course files (PDF, PPTX, DOCX), page by page."""
+import io
 import re
 from pathlib import Path
 
@@ -36,15 +37,19 @@ def extract_pdf(path):
     """Text layer per page; image-only pages (screenshots, scans) are OCR'd."""
     import pymupdf
 
-    pages, used_ocr = [], False
     with pymupdf.open(path) as doc:
-        for page in doc:
-            text = _tidy(page.get_text("text"))
-            if len(text) < MIN_CHARS_PER_PAGE and page.get_images():
-                ocr = _ocr_page(page)
-                if ocr is not None:
-                    text, used_ocr = ocr, True
-            pages.append(text)
+        return _pdf_pages(doc)
+
+
+def _pdf_pages(doc):
+    pages, used_ocr = [], False
+    for page in doc:
+        text = _tidy(page.get_text("text"))
+        if len(text) < MIN_CHARS_PER_PAGE and page.get_images():
+            ocr = _ocr_page(page)  # None where OCR is unavailable (Linux servers)
+            if ocr is not None:
+                text, used_ocr = ocr, True
+        pages.append(text)
     return pages, ("pdf+ocr" if used_ocr else "pdf")
 
 
@@ -85,6 +90,19 @@ def extract_docx(path):
 
 
 EXTRACTORS = {"pdf": extract_pdf, "pptx": extract_pptx, "docx": extract_docx}
+
+
+def extract_bytes(data: bytes, name: str) -> tuple[list[str], str]:
+    """Like the extract_* functions, from file contents in memory (the hosted version never stores files)."""
+    method = method_for(name)
+    if method is None:
+        raise ValueError(f"unsupported file type: {Path(name).suffix or name}")
+    if method == "pdf":
+        import pymupdf
+
+        with pymupdf.open(stream=data, filetype="pdf") as doc:
+            return _pdf_pages(doc)
+    return EXTRACTORS[method](io.BytesIO(data))  # python-pptx / python-docx read file-like objects
 
 
 def method_for(name):

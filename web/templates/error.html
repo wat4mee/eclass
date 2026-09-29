@@ -1,11 +1,10 @@
 {% extends "base.html" %}
 {% block title %}{{ title }} · {{ app_name }}{% endblock %}
-{% block main_class %}auth-main{% endblock %}
 {% block content %}
-<section class="auth-card card error-card">
-  <div class="code">{{ code }}</div>
-  <h1>{{ title }}</h1>
+<section class="card error-card solo reveal">
+  <div class="code display">{{ code }}</div>
+  <h2>{{ title }}</h2>
   <p class="muted">{{ text }}</p>
-  <a class="btn primary" href="{{ url_for('pages.home') }}">{{ t('err.home') }}</a>
+  <a class="btn accent" href="{{ url_for('dashboard.home') }}"><svg class="ico"><use href="#i-home"/></svg>{{ t('err.home') }}</a>
 </section>
 {% endblock %}

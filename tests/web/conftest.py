@@ -62,6 +62,12 @@ class FakeEClass:
     def export_cookies(self):
         return [{"name": "MoodleSession", "value": self.COOKIE, "domain": "eclass.inha.ac.kr", "path": "/"}]
 
+    def get(self, url, stream=False):  # /file/<id> streams through the student's session
+        from tests.web.fake_eclass import FakeResponse
+        if url.endswith(".html"):
+            return FakeResponse(url, b"<script>alert(1)</script>", "text/html")
+        return FakeResponse(url, b"%PDF-1.4 fake file", "application/pdf")
+
 
 @pytest.fixture
 def app(engine, monkeypatch):
@@ -70,14 +76,17 @@ def app(engine, monkeypatch):
     from sqlalchemy import text
 
     import web
-    from web import eclass_login
+    from web import eclass_login, tasks
     from web.extensions import limiter
 
     monkeypatch.setenv("CREDENTIAL_KEY", Fernet.generate_key().decode())
     monkeypatch.delenv("CREDENTIAL_KEY_PREVIOUS", raising=False)
     monkeypatch.delenv("CREDENTIAL_KEY_VERSION", raising=False)
     monkeypatch.setattr(eclass_login, "EClassClient", FakeEClass)
+    syncs = []  # background syncs are recorded, not run: sync tests call web.sync.sync_user directly
+    monkeypatch.setattr(tasks, "start_sync", lambda app, user_id, trigger: syncs.append((user_id, trigger)))
     app = web.create_app({"DATABASE_URL": TEST_DATABASE_URL, "TESTING": True, "SECRET_KEY": "test-secret"})
+    app.config["STARTED_SYNCS"] = syncs
     limiter.reset()
     yield app
     app.extensions["db_engine"].dispose()  # close this app's pooled connections

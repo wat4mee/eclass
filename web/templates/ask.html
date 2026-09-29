@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ t('nav.ai') }} · {{ app_name }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='katex/katex.min.css') }}">{% endblock %}
+{% block content %}
+<section class="ask">
+  <header class="ask-head reveal">
+    <span class="eyebrow">{{ t('ask.eyebrow') }}</span>
+    <h1 class="display">Shahzod <em>AI</em></h1>
+    <p class="muted">{{ t('ask.subtitle') }}</p>
+  </header>
+
+  <div class="scope reveal" id="scope">
+    <button class="pill all {{ 'on' if not selected }}" type="button" data-course="">{{ t('ask.all_courses') }}</button>
+    {% for c in courses %}
+    <button class="pill {{ 'on' if c.id == selected }}" type="button" data-course="{{ c.id }}" style="--c: {{ course_color(c.id) }}"><span class="dot"></span>{{ c.name }}</button>
+    {% endfor %}
+  </div>
+
+  <div class="chat" id="chat" aria-live="polite">
+    <div class="welcome reveal" id="welcome">
+      <div class="orb"><svg class="ico"><use href="#i-sparkles"/></svg></div>
+      <p class="muted">{{ t('web.ask.welcome') }}</p>
+    </div>
+  </div>
+
+  <form class="composer" id="ask">
+    <textarea id="question" rows="1" maxlength="1000" placeholder="{{ t('ask.placeholder') }}" required></textarea>
+    <button class="send" id="send" type="submit" aria-label="{{ t('ask.send') }}"><svg class="ico"><use href="#i-send"/></svg></button>
+  </form>
+  <p class="keys">{{ t('ask.keys') | safe }}</p>
+</section>
+<script type="application/json" id="chat-config">{{ {"course": selected or "", "url": url_for('ask.api_ask'), "file": url_for('dashboard.file', material_id=0)} | tojson }}</script>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='katex/katex.min.js') }}" defer></script>
+<script src="{{ url_for('static', filename='katex/auto-render.min.js') }}" defer></script>
+<script src="{{ url_for('static', filename='web/ask.js') }}" defer></script>
+{% endblock %}

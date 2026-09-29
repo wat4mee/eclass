@@ -73,4 +73,5 @@ def from_env() -> dict:
         "LOGIN_LIMIT_IP": os.getenv("LOGIN_LIMIT_IP", "10 per minute;60 per hour"),
         "LOGIN_LIMIT_USER": os.getenv("LOGIN_LIMIT_USER", "5 per 15 minutes"),
         "ECLASS_SESSION_MINUTES": int(os.getenv("ECLASS_SESSION_MINUTES", "120")),  # saved eClass session lifetime
+        "AI_DAILY_LIMIT": int(os.getenv("AI_DAILY_LIMIT", "30")),  # chat questions per student per day (shared quota)
     }
