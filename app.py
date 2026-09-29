@@ -4,6 +4,7 @@
 """
 import argparse
 import json
+import os
 import logging
 import random
 import re
@@ -13,7 +14,9 @@ import threading
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlparse
 
+from dotenv import load_dotenv
 from flask import Flask, abort, g, jsonify, redirect, render_template, request, send_file, url_for
 
 from eclass import chapters, db, i18n, rag, search, study, syncstatus, videos
@@ -42,9 +45,41 @@ def T(key, **kw):
     return i18n.t(g.lang, key, **kw)
 
 
+LOCAL_HOSTS = {"127.0.0.1", "localhost"}
+
+
 @app.before_request
 def _language():
     g.lang = i18n.pick(request.args.get("lang") or request.cookies.get("lang"))
+
+
+@app.before_request
+def _guard():
+    """Local-only app: reject foreign Host headers (DNS rebinding) and cross-site POSTs to /api/."""
+    if (request.host or "").rsplit(":", 1)[0] not in LOCAL_HOSTS:
+        abort(400)
+    if request.method == "POST" and request.path.startswith("/api/"):
+        source = request.headers.get("Origin") or request.headers.get("Referer") or ""
+        if urlparse(source).netloc != request.host:
+            log.warning("blocked cross-site POST to %s from %r", request.path, source[:100])
+            abort(403)
+
+
+def _error(code, exc=None):
+    if request.path.startswith("/api/"):
+        return jsonify(error=T(f"err.{code}.title")), code
+    return render_template("error.html", code=code, title=T(f"err.{code}.title"), text=T(f"err.{code}.text"),
+                           home=T("err.home")), code
+
+
+for _code in (400, 403, 404, 405, 415):
+    app.register_error_handler(_code, lambda exc, _c=_code: _error(_c))
+
+
+@app.errorhandler(500)
+def _server_error(exc):
+    log.error("server error on %s", request.path, exc_info=getattr(exc, "original_exception", exc))
+    return _error(500)
 
 
 @app.after_request
@@ -170,22 +205,28 @@ def _colors():
 
 @app.context_processor
 def _globals():
-    now = datetime.now().astimezone()
-    last = conn().execute("SELECT MAX(last_seen) AS t FROM courses").fetchone()["t"]
-    synced = datetime.fromisoformat(last).astimezone() if last else None
-    colors = _colors()
-    return {
+    g.lang = g.get("lang", i18n.DEFAULT)
+    page = {"last_sync": "—", "sync_fresh": False, "sync_status": {"state": "none"},
+            "course_color": lambda cid: COURSE_COLORS[0]}
+    try:  # an error page must still render when the database is the problem
+        now = datetime.now().astimezone()
+        last = conn().execute("SELECT MAX(last_seen) AS t FROM courses").fetchone()["t"]
+        synced = datetime.fromisoformat(last).astimezone() if last else None
+        colors = _colors()
+        page = {"last_sync": i18n.ago(g.lang, now - synced) if synced else T("sync.never"),
+                "sync_fresh": bool(synced and now - synced < timedelta(hours=4)),
+                "sync_status": sync_status(),
+                "course_color": lambda cid: colors.get(cid, COURSE_COLORS[0])}
+    except Exception:
+        log.exception("page context unavailable")
+    return page | {
         "eclass_url": ECLASS_URL,
-        "last_sync": i18n.ago(g.lang, now - synced) if synced else T("sync.never"),
-        "sync_fresh": bool(synced and now - synced < timedelta(hours=4)),
-        "course_color": lambda cid: colors.get(cid, COURSE_COLORS[0]),
         "t": T,
         "pl": lambda n, word: i18n.plural(g.lang, n, word),
         "lang": g.lang,
         "langs": i18n.LANGS,
         "lang_url": lang_url,
         "js_t": i18n.js_strings(g.lang),
-        "sync_status": sync_status(),
         "is_book": chapters.is_book,
         "status_label": lambda s: T(f"status.{s.lower()}") if s and f"status.{s.lower()}" in i18n.S else (s or ""),
     }
@@ -619,7 +660,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port", type=int, default=5050)
     args = ap.parse_args()
-    app.run(host="127.0.0.1", port=args.port, debug=False)
+    load_dotenv()
+    # local only; the debugger stays off unless FLASK_DEBUG=1 is set in .env
+    app.run(host="127.0.0.1", port=args.port, debug=os.getenv("FLASK_DEBUG") == "1")
 
 
 if __name__ == "__main__":

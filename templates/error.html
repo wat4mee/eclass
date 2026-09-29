@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ code }} · eClass Companion{% endblock %}
+{% block style %}
+.err-page { min-height: 62vh; display: grid; place-items: center; text-align: center; }
+.err-box { display: grid; justify-items: center; gap: 14px; max-width: 520px; }
+.err-code { font-family: var(--display); font-size: clamp(110px, 22vw, 190px); line-height: .85; letter-spacing: -.03em;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: float 5s ease-in-out infinite; }
+@keyframes float { 50% { transform: translateY(-10px) rotate(-1.5deg); } }
+.err-box h1 { font-size: 28px; font-weight: 800; }
+.err-box p { color: var(--muted); font-size: 16px; }
+.err-box .btn { margin-top: 10px; }
+{% endblock %}
+{% block content %}
+<section class="err-page">
+  <div class="err-box reveal">
+    <div class="err-code" aria-hidden="true">{{ code }}</div>
+    <h1>{{ title }}</h1>
+    <p>{{ text }}</p>
+    <a class="btn accent" href="{{ url_for('index') }}"><svg class="ico"><use href="#i-home"/></svg>{{ home }}</a>
+  </div>
+</section>
+{% endblock %}

@@ -75,14 +75,10 @@ tracks deadlines/grades, and analyzes materials with AI. Personal use only, sing
 - Keep scraping logic in `eclass/` package, one module per concern (auth, courses, activities, files).
 - Handle login expiry: if a response redirects to `/login`, re-login once and retry.
 
-## Status (2026-09-28)
-- 1 sync: done (`sync.py`). 2 notifications: done (`notify.py`), Telegram bot @eclass_login_bot connected
-  2026-09-28 (`notify.py --test` sends a test message, `--chat-id` lists chats).
-- 3 extraction + study packs: done (`analyze.py`); Calculus lecture PDFs are image-only -> OCR.
-- 4 Q&A: done (`ask.py`, `eclass/rag.py`): FTS5 + local `BAAI/bge-small-en-v1.5` (fastembed, cached in
-  `data/models`). Embedding uses `EMBED_THREADS` (default 2) cores and commits every 40 pages
-  (`index_state`), so textbooks index in the background and resume after interruption.
-- 5 dashboard: done (`app.py`, `templates/`) -> http://127.0.0.1:5050 (local only).
-- launchd agents (sources in `deploy/`, installed in ~/Library/LaunchAgents):
-  `com.eclass.sync` runs `sync.py --all` every 3 h; `com.eclass.web` keeps the dashboard running.
-  `eclass/lock.py` prevents overlapping sync/analyze runs. Logs in `data/logs/`.
+## Status (2026-09-29)
+All 5 planned features are built, plus: UZ/EN/RU UI (`eclass/i18n.py`), Shahzod AI chat with memory and
+filtered sources (`eclass/rag.py`), AI provider chain (`eclass/ai.py`, `AI_PROVIDER=auto`: Groq models ->
+Gemini -> Ollama), textbook chapters on demand (`eclass/chapters.py`), YouTube transcripts (`eclass/videos.py`),
+Cmd+K search (`eclass/search.py`, FTS5), sync status/button (`eclass/syncstatus.py`), today plan + studied flags,
+error pages and a Host/Origin guard in `app.py`. See README.md (setup, launchd via `deploy/install.sh`, privacy)
+and CHANGELOG.md (what changed, security review, open items). Browser checks: `tests/e2e.py` (Playwright).
