@@ -82,6 +82,16 @@
 .mat-body a { font-weight: 700; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color .2s; }
 .mat-body a:hover { color: var(--accent); }
 
+.sh { display: flex; gap: 12px; align-items: center; padding: 9px 0; }
+.sh + .sh { border-top: 1px solid var(--line); }
+.sh-ico { width: 30px; height: 30px; flex: none; border-radius: 10px; display: grid; place-items: center;
+  color: var(--hc); background: color-mix(in srgb, var(--hc) 15%, transparent); }
+.sh-ico .ico { width: 16px; height: 16px; stroke-width: 2.4; }
+.sh-body { min-width: 0; flex: 1; }
+.sh-body b { font-weight: 700; display: block; overflow-wrap: anywhere; }
+.sh-done { --hc: var(--ok); } .sh-partial { --hc: var(--warn); } .sh-running { --hc: var(--info); }
+.sh-error, .sh-stopped { --hc: var(--bad); }
+
 .courses { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(255px, 1fr)); }
 .course-card { display: flex; flex-direction: column; gap: 6px; padding: 20px; overflow: hidden; }
 .course-card .stripe { position: absolute; inset: 0 0 auto; height: 4px; background: linear-gradient(90deg, var(--c), transparent); }
@@ -282,6 +292,17 @@
     </div>
     <div class="bar-track" title="{{ t('home.study_ready') }}"><span style="--w: {{ (100 * c.n_study / c.n_files) | round | int if c.n_files else 0 }}%"></span></div>
   </a>
+  {% endfor %}
+</section>
+<div class="section-head reveal"><h2>{{ t('sync.history.title') }}</h2>{% if history %}<span class="muted small">{{ t('sync.history.hint', n=history | length) }}</span>{% endif %}</div>
+<section class="card sync-history reveal">
+  {% for h in history %}
+  <div class="sh sh-{{ h.state }}"{% if h.detail %} title="{{ h.detail }}"{% endif %}>
+    <span class="sh-ico"><svg class="ico"><use href="#i-{{ {'done': 'check', 'partial': 'check', 'running': 'clock'}.get(h.state, 'x') }}"/></svg></span>
+    <div class="sh-body"><b>{{ h.text }}</b><div class="meta">{{ h.when }} · {{ h.by }}</div></div>
+  </div>
+  {% else %}
+  <p class="muted small">{{ t('sync.history.empty') }}</p>
   {% endfor %}
 </section>
 {% endblock %}

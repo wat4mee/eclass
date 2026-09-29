@@ -4,6 +4,9 @@ AI_PROVIDER in .env:
     auto (default)  Groq gpt-oss-120b -> Groq qwen3.8-27b -> Groq gpt-oss-20b -> Gemini (if GEMINI_API_KEY)
                     -> Ollama (if running); every Groq model has its own daily free quota
     a list          e.g. "gemini,groq:openai/gpt-oss-120b,ollama"  (provider or provider:model)
+AI_FALLBACK in .env (optional, same format): models tried last, after every AI_PROVIDER model failed, hit its
+limit or was too slow. Time limits: AI_TIMEOUT per request (study packs), AI_CHAT_TIMEOUT per request and
+AI_CHAT_BUDGET for a whole chat answer (see eclass/config.py).
 API keys are sent only in headers and never appear in logs or exception messages.
 """
 import json
@@ -15,7 +18,7 @@ from collections import deque
 import requests
 from dotenv import load_dotenv
 
-from eclass import latex
+from eclass import config, latex
 
 
 class AIError(RuntimeError):
@@ -32,6 +35,20 @@ class InvalidKey(AIError):
 
 class Busy(AIError):
     """This model cannot take the request right now (overloaded, per-minute limit, request too large)."""
+
+
+class AITimeout(Busy):
+    """No answer in time: the model is too slow or unreachable, or the caller's time budget is spent."""
+
+
+def _time_left(deadline, need=3.0):
+    """Seconds left before `deadline` (time.monotonic()), or AITimeout when fewer than `need` remain."""
+    if deadline is None:
+        return None
+    left = deadline - time.monotonic()
+    if left < need:
+        raise AITimeout("time budget used up")
+    return left
 
 
 _ESCAPED_UNICODE = re.compile(r"\\u([0-9a-fA-F]{4})")
@@ -58,12 +75,14 @@ class OpenAICompatProvider:
     tpm = 0                 # tokens per minute to pace for (0 = no pacing)
     max_wait = 120          # seconds; a longer retry-after means the daily quota is gone
     patient = True          # False (set by the chain): raise Busy instead of waiting, so the next model answers
+    deadline = None         # time.monotonic() by which the caller needs the answer (set by the chain)
 
-    def __init__(self, model):
+    def __init__(self, model, timeout=None):
         self._key = os.getenv(self.key_env)
         if not self._key:
             raise AIError(f"{self.key_env} is not set in .env")
         self.model = model
+        self.timeout = timeout or config.AI_TIMEOUT  # seconds per HTTP request
         self._window = deque()  # (timestamp, tokens) of the last minute
         self._schema_mode = "json_schema"
 
@@ -75,7 +94,14 @@ class OpenAICompatProvider:
                 self._window.popleft()
             if not self._window or sum(t for _, t in self._window) + estimate <= self.tpm:
                 return
-            time.sleep(60 - (now - self._window[0][0]) + 0.5)
+            self._sleep(60 - (now - self._window[0][0]) + 0.5)
+
+    def _sleep(self, seconds):
+        """Wait, unless that would miss the caller's deadline: then let the next model answer instead."""
+        left = _time_left(self.deadline)
+        if left is not None and seconds > left - 3:
+            raise Busy(f"{self.name} {self.model}: would have to wait {seconds:.0f} s")
+        time.sleep(seconds)
 
     def _extra(self):
         return {}
@@ -99,9 +125,13 @@ class OpenAICompatProvider:
         retries = 0
         for _attempt in range(8):
             self._pace(estimate)
+            left = _time_left(self.deadline)
+            timeout = min(self.timeout, left) if left is not None else self.timeout
             try:
-                resp = requests.post(self.url, json=self._body(system, user, schema, max_tokens), timeout=180,
+                resp = requests.post(self.url, json=self._body(system, user, schema, max_tokens), timeout=timeout,
                                      headers={"Authorization": f"Bearer {self._key}"})
+            except (requests.Timeout, requests.ConnectionError) as exc:  # slow or unreachable: try the next model
+                raise AITimeout(f"{self.name} {self.model}: {type(exc).__name__} after {timeout:.0f} s") from None
             except requests.RequestException as exc:
                 raise AIError(f"{self.name}: {type(exc).__name__}") from None
             message = _error_message(resp) if resp.status_code != 200 else ""
@@ -111,7 +141,7 @@ class OpenAICompatProvider:
                     raise DailyLimitReached(f"{self.name} {self.model}: {message}")
                 if not self.patient or "too large" in message.lower():  # waiting would not help this call
                     raise Busy(f"{self.name} {self.model}: {message}")
-                time.sleep(wait + 1)
+                self._sleep(wait + 1)
                 continue
             if resp.status_code in (401, 403) or (resp.status_code == 400 and "api key" in message.lower()):
                 raise InvalidKey(f"{self.name}: {self.key_env} rejected ({resp.status_code})")
@@ -124,7 +154,7 @@ class OpenAICompatProvider:
                 raise Busy(f"{self.name} {self.model}: {resp.status_code} {message}")
             if overloaded and retries < 2:  # last model in the chain: brief back-off
                 retries += 1
-                time.sleep(3 * retries)
+                self._sleep(3 * retries)
                 continue
             if resp.status_code != 200:
                 raise AIError(f"{self.name} {resp.status_code}: {message}")
@@ -147,8 +177,8 @@ class GroqProvider(OpenAICompatProvider):
     url = "https://api.groq.com/openai/v1/chat/completions"
     key_env = "GROQ_API_KEY"
 
-    def __init__(self, model=None):
-        super().__init__(model or os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"))
+    def __init__(self, model=None, timeout=None):
+        super().__init__(model or os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"), timeout)
         self.tpm = int(os.getenv("GROQ_TPM", "8000"))  # free tier: 8K tokens/minute per model
 
     def _extra(self):
@@ -166,8 +196,8 @@ class GeminiProvider(OpenAICompatProvider):
     url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     key_env = "GEMINI_API_KEY"
 
-    def __init__(self, model=None):
-        super().__init__(model or os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"))
+    def __init__(self, model=None, timeout=None):
+        super().__init__(model or os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"), timeout)
 
     def _extra(self):
         return {"reasoning_effort": "low"}
@@ -182,9 +212,11 @@ class GeminiProvider(OpenAICompatProvider):
 
 class OllamaProvider:
     name = "ollama"
+    deadline = None
 
-    def __init__(self, model=None):
+    def __init__(self, model=None, timeout=None):
         self.model = model or os.getenv("OLLAMA_MODEL", "qwen3:14b")
+        self.timeout = timeout or config.OLLAMA_TIMEOUT
         base = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
         self.url = base + "/api/chat"
         try:  # fail once up front instead of once per file
@@ -200,8 +232,12 @@ class OllamaProvider:
             "stream": False,
             "options": {"num_ctx": 16384, "num_predict": max_tokens},
         }
+        left = _time_left(self.deadline)
+        timeout = min(self.timeout, left) if left is not None else self.timeout
         try:
-            resp = requests.post(self.url, json=body, timeout=900)
+            resp = requests.post(self.url, json=body, timeout=timeout)
+        except requests.Timeout:
+            raise AITimeout(f"ollama {self.model}: no answer after {timeout:.0f} s") from None
         except requests.RequestException as exc:
             raise AIError(f"ollama not reachable at {self.url}: {type(exc).__name__}") from None
         if resp.status_code != 200:
@@ -212,13 +248,16 @@ class OllamaProvider:
 class ChainProvider:
     """Uses the first provider whose daily quota is not used up; name/model tell who answered last."""
 
-    def __init__(self, providers):
+    def __init__(self, providers, deadline=None):
         self.providers = providers
+        self.deadline = deadline  # time.monotonic() by which every call must be answered (chat), or None
         self.name, self.model = providers[0].name, providers[0].model
 
     def complete_json(self, system, user, schema, max_tokens):
         last = None
         for provider in list(self.providers):
+            _time_left(self.deadline)
+            provider.deadline = self.deadline
             provider.patient = provider is self.providers[-1]  # only the last one waits out a busy spell
             try:
                 result = provider.complete_json(system, user, schema, max_tokens)
@@ -240,25 +279,32 @@ PROVIDERS = {"groq": GroqProvider, "gemini": GeminiProvider, "ollama": OllamaPro
 AUTO_CHAIN = ["groq:openai/gpt-oss-120b", "groq:qwen/qwen3.8-27b", "groq:openai/gpt-oss-20b", "gemini", "ollama"]
 
 
-def get_provider():
+def _items(setting):
+    return [s.strip() for s in setting.lower().split(",") if s.strip()]
+
+
+def get_provider(timeout=None, deadline=None):
+    """The configured provider chain. `timeout`: seconds per HTTP request (default AI_TIMEOUT);
+    `deadline`: time.monotonic() by which each call must be answered, whatever model ends up answering."""
     load_dotenv()
     setting = os.getenv("AI_PROVIDER", "auto").strip().lower()
     auto = setting in ("auto", "")
-    items = AUTO_CHAIN if auto else [s.strip() for s in setting.split(",") if s.strip()]
+    items = AUTO_CHAIN if auto else _items(setting)
     if setting == "groq":  # the Groq models only, each with its own daily quota
         items = [s for s in AUTO_CHAIN if s.startswith("groq")]
+    items = items + [s for s in _items(os.getenv("AI_FALLBACK", "")) if s not in items]
     providers, problems = [], []
     for item in items:
         name, _, model = item.partition(":")
         if name not in PROVIDERS:
             raise AIError(f"unknown AI provider {name!r}; use {sorted(PROVIDERS)} or auto")
         try:
-            providers.append(PROVIDERS[name](model or None))
+            providers.append(PROVIDERS[name](model or None, timeout))
         except AIError as exc:  # missing key / server not running: skip it
             problems.append(str(exc))
     if not providers:
         raise AIError("no AI provider available: " + "; ".join(problems))
-    return ChainProvider(providers)
+    return ChainProvider(providers, deadline)
 
 
 def _error_body(resp):

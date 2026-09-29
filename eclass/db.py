@@ -129,6 +129,18 @@ CREATE TABLE IF NOT EXISTS study_i18n (   -- study packs translated for the dash
     PRIMARY KEY (file_id, language)
 );
 
+CREATE TABLE IF NOT EXISTS sync_runs (    -- one row per sync attempt; the dashboard shows the latest ones
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at   TEXT NOT NULL,
+    finished_at  TEXT,                    -- NULL while running (or when the process died)
+    started_by   TEXT NOT NULL,           -- dashboard | schedule | terminal
+    state        TEXT NOT NULL,           -- running | done | error
+    code         TEXT,                    -- error kind when state = error (eclass.auth.EClassError.code)
+    detail       TEXT,                    -- short technical reason for the log, never credentials
+    new_items    INTEGER NOT NULL DEFAULT 0,
+    errors       INTEGER NOT NULL DEFAULT 0   -- activities that failed in an otherwise finished run
+);
+
 CREATE TABLE IF NOT EXISTS index_state (  -- progress per file, so long textbooks resume mid-way
     file_id    INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
     sha256     TEXT NOT NULL,
@@ -301,3 +313,23 @@ def save_translation(conn, file_id, language, sha256, result):
         (file_id, language, sha256, *pack_columns(result), now()),
     )
     conn.commit()
+
+
+def start_sync_run(conn, started_by: str) -> int:
+    cur = conn.execute("INSERT INTO sync_runs (started_at, started_by, state) VALUES (?, ?, 'running')",
+                       (now(), started_by))
+    conn.commit()
+    return cur.lastrowid
+
+
+def finish_sync_run(conn, run_id: int, state: str, code: str | None = None, detail: str | None = None,
+                    new_items: int = 0, errors: int = 0) -> None:
+    conn.execute(
+        """UPDATE sync_runs SET finished_at = ?, state = ?, code = ?, detail = ?, new_items = ?, errors = ?
+           WHERE id = ?""", (now(), state, code, detail, new_items, errors, run_id))
+    conn.commit()
+
+
+def sync_runs(conn, limit: int = 10) -> list[sqlite3.Row]:
+    """The latest sync attempts, newest first."""
+    return conn.execute("SELECT * FROM sync_runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()

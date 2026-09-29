@@ -35,7 +35,7 @@ def passage(n, file_id=None, page=1, sim=0.8):
 @pytest.fixture
 def setup(monkeypatch):
     def use(provider, passages):
-        monkeypatch.setattr(web, "get_provider", lambda: provider)
+        monkeypatch.setattr(web, "get_provider", lambda **_settings: provider)
         monkeypatch.setattr(rag, "search", lambda conn, query, course_id=None, k=rag.TOP_K: list(passages))
         return provider
     return use

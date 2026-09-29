@@ -35,12 +35,15 @@ ECLASS_MIN_INTERVAL = 1.0               # seconds between requests: be polite to
 ECLASS_TIMEOUT = env_int("ECLASS_TIMEOUT", 60)          # seconds per eClass request
 
 # ---------------------------------------------------------------- AI
-AI_TIMEOUT = env_int("AI_TIMEOUT", 120)                 # seconds per AI request (study packs, chapters)
-AI_CHAT_TIMEOUT = env_int("AI_CHAT_TIMEOUT", 40)        # seconds per AI request while the student waits in chat
+AI_TIMEOUT = env_int("AI_TIMEOUT", 180)                 # seconds per AI request (study packs, chapters)
+AI_CHAT_TIMEOUT = env_int("AI_CHAT_TIMEOUT", 30)        # seconds per AI request while the student waits in chat:
+                                                        # a slower model is skipped for the next one in the chain
+AI_CHAT_BUDGET = env_int("AI_CHAT_BUDGET", 75)          # seconds for a whole chat answer (the page waits 15 s more)
 OLLAMA_TIMEOUT = env_int("OLLAMA_TIMEOUT", 900)         # local models are slow on a laptop CPU
 
 # ---------------------------------------------------------------- Telegram
 TELEGRAM_TIMEOUT = 30
+NOTIFY_LANGUAGE = os.getenv("NOTIFY_LANGUAGE", "uz")   # language of Telegram messages: uz | en | ru
 
 # ---------------------------------------------------------------- dashboard
 SOON_WINDOW = timedelta(hours=48)       # an unsubmitted assignment due within this is shown as "soon"

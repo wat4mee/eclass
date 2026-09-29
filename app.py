@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 from flask import Flask, abort, g, jsonify, redirect, render_template, request, send_file, url_for
 
 from eclass import chapters, config, db, i18n, rag, search, study, syncstatus, videos
-from eclass.ai import AIError, DailyLimitReached, get_provider
+from eclass.ai import AIError, AITimeout, DailyLimitReached, get_provider
 from eclass.config import DATA_DIR, DB_PATH, ECLASS_URL, ROOT
 from eclass.notify import is_submitted, parse_due
 
@@ -89,6 +89,9 @@ def ai_failure(exc: Exception, what: str) -> tuple[str, int]:
     if isinstance(exc, DailyLimitReached):
         log.warning("%s: daily AI limit reached: %s", what, exc)
         return "err.ai_quota", 429
+    if isinstance(exc, AITimeout):
+        log.warning("%s: AI too slow: %s", what, exc)
+        return "err.ai_timeout", 504
     if isinstance(exc, AIError):
         log.error("%s: AI provider failed: %s", what, exc)
         return "err.ai", 502
@@ -247,8 +250,37 @@ def sync_status():
         if datetime.now(started.tzinfo) - started > config.SYNC_START_GRACE:  # died without writing a result
             status = status | {"state": "error", "code": "stopped"}
     if status.get("state") == "error":
-        status["message"] = T(f"sync.err.{status.get('code', 'other')}")
+        status["message"] = sync_error_text(status.get("code"))
     return status
+
+
+def sync_error_text(code: str | None) -> str:
+    key = f"sync.err.{code}"
+    return T(key if key in i18n.S else "sync.err.other")
+
+
+def sync_history() -> list[dict]:
+    """The latest sync attempts for the home page, newest first, each with a localized outcome."""
+    rows, running = db.sync_runs(conn(), config.SYNC_HISTORY), syncstatus.busy(DATA_DIR)
+    out = []
+    for i, r in enumerate(rows):
+        state, new, errors = r["state"], r["new_items"], r["errors"]
+        if state == "running" and not (running and i == 0):
+            state = "stopped"  # the process died without recording a result
+        if state == "done" and errors:
+            state, text = "partial", T("sync.hist.partial", n=new, e=errors)
+        elif state == "done":
+            text = T("sync.hist.new", n=new) if new else T("sync.hist.nothing")
+        elif state == "error":
+            text = sync_error_text(r["code"])
+        elif state == "running":
+            text = T("sync.hist.running")
+        else:
+            text = T("sync.err.stopped")
+        by = f"sync.by.{r['started_by']}"
+        out.append({"state": state, "text": text, "detail": r["detail"], "by": T(by) if by in i18n.S else r["started_by"],
+                    "when": i18n.short_date(g.lang, datetime.fromisoformat(r["started_at"]).astimezone())})
+    return out
 
 
 def lang_url(code):
@@ -313,7 +345,7 @@ def index():
     return render_template(
         "index.html", pending=pending, next_due=upcoming[0] if upcoming else None, graded=graded,
         materials=materials, course_list=courses(), stats=stats, greeting=T(f"greet.{part}"), plan=today_plan,
-        today=i18n.long_date(g.lang, now))
+        today=i18n.long_date(g.lang, now), history=sync_history())
 
 
 def plan_for_today(c, pending, now):
@@ -553,7 +585,7 @@ def question_suggestions():
 @app.route("/ask")
 def ask_page():
     return render_template("ask.html", course_list=courses(), suggestions=question_suggestions(),
-                           selected=request.args.get("course", type=int))
+                           selected=request.args.get("course", type=int), timeout_ms=(config.AI_CHAT_BUDGET + 15) * 1000)
 
 
 @app.route("/api/ask", methods=["POST"])
@@ -573,10 +605,11 @@ def api_ask():
         return rag.answer(conn(), provider, question, course_id=int(course_id) if course_id else None,
                           language=i18n.AI_LANGUAGE[g.lang], history=history, not_found=T("ask.not_found"))
     try:
-        provider = get_provider()
+        # every model gets AI_CHAT_TIMEOUT seconds, the whole answer AI_CHAT_BUDGET: slow models are skipped
+        provider = get_provider(timeout=config.AI_CHAT_TIMEOUT, deadline=time.monotonic() + config.AI_CHAT_BUDGET)
         try:
             result = ask(provider)
-        except DailyLimitReached:
+        except (DailyLimitReached, AITimeout):
             raise
         except AIError as exc:  # transient provider hiccup: one retry after a short pause
             log.warning("ask failed, retrying once: %s", exc)
@@ -622,7 +655,7 @@ def api_sync():
         syncstatus.write(DATA_DIR, {"state": "running", "started": db.now(), "by": "dashboard"})
         (DATA_DIR / "logs").mkdir(parents=True, exist_ok=True)
         with open(DATA_DIR / "logs" / "sync.log", "a") as out:
-            subprocess.Popen([sys.executable, "-u", str(ROOT / "sync.py"), "--all"], cwd=ROOT,
+            subprocess.Popen([sys.executable, "-u", str(ROOT / "sync.py"), "--all", "--trigger", "dashboard"], cwd=ROOT,
                              stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
         log.info("sync started from the dashboard")
     return jsonify(sync_status()), 202

@@ -8,7 +8,7 @@ import re
 
 import numpy as np
 
-from eclass import latex
+from eclass import i18n, latex
 from eclass.config import MODEL_DIR, env_int
 
 EMBED_MODEL = "BAAI/bge-small-en-v1.5"
@@ -351,11 +351,12 @@ def _renumber_citations(text: str, renumber: dict[int, int]) -> str:
 
 
 def answer(conn, provider, question, course_id=None, k=TOP_K, language="Uzbek (Latin script)",
-           history=None, not_found="Materiallarda bu haqida ma'lumot topilmadi."):
+           history=None, not_found=None):
     """Answer a question (with optional chat history) from the course materials.
 
     Returns {answer, found, standalone, query, sources}; sources is empty when nothing relevant was found.
     """
+    not_found = not_found or i18n.t(i18n.DEFAULT, "ask.not_found")
     convo = _history_text(history)
     prompt = (f"Conversation so far:\n{convo}\n\n" if convo else "") + f"Latest message: {question}"
     if course_id:

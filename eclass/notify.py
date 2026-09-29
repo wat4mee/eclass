@@ -10,7 +10,8 @@ import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from . import db, telegram
+from . import db, i18n, telegram
+from .config import NOTIFY_LANGUAGE
 
 DEADLINE_WINDOW = timedelta(hours=24)
 URGENT_WINDOW = timedelta(hours=3)
@@ -37,9 +38,8 @@ def parse_due(value):
         return None
 
 
-def _left(delta):
-    hours, rem = divmod(int(delta.total_seconds()) // 60, 60)
-    return f"{hours} soat {rem} daqiqa" if hours else f"{rem} daqiqa"
+def _t(key, **kw):
+    return i18n.t(i18n.pick(NOTIFY_LANGUAGE), key, **kw)
 
 
 def collect_events(conn, now):
@@ -60,7 +60,7 @@ def collect_events(conn, now):
         if r["filename"] != r["name"]:
             label += f" — <i>{_e(r['filename'])}</i>"
         events.append({"key": prefix + r["sha256"], "kind": "material", "course": r["course"],
-                       "text": label + (" (yangilandi)" if updated else "")})
+                       "text": label + (_t("tg.updated") if updated else "")})
 
     for r in conn.execute(
         """SELECT a.id, a.name, a.url, c.name AS course FROM activities a
@@ -77,18 +77,17 @@ def collect_events(conn, now):
            JOIN courses c ON c.id = a.course_id ORDER BY s.due_date, a.id"""
     ):
         aid, name = r["activity_id"], _e(r["name"])
-        due_text = r["due_date"] or "muddat ko'rsatilmagan"
-        attach = f", {r['n_files']} ta fayl" if r["n_files"] else ""
+        attach = _t("tg.files", n=r["n_files"]) if r["n_files"] else ""
         events.append({"key": f"assign:{aid}", "kind": "assign", "course": r["course"],
-                       "text": f"{name} — muddat: {_e(due_text)}{attach}"})
+                       "text": _t("tg.assign", name=name, due=_e(r["due_date"] or _t("tg.no_due")), files=attach)})
         if r["grade"]:
             events.append({"key": f"grade:{aid}:{r['grade']}", "kind": "grade", "course": r["course"],
                            "text": f"{name}: <b>{_e(r['grade'])}</b>"})
         due = parse_due(r["due_date"])
         if due and not is_submitted(r["submission_status"]) and now < due <= now + DEADLINE_WINDOW:
             day_key = f"deadline:{aid}:{r['due_date']}"
-            text = (f"{name} — {_e(r['due_date'])} (<b>{_left(due - now)}</b> qoldi), "
-                    f"holat: {_e(r['submission_status'])}")
+            text = _t("tg.deadline", name=name, due=_e(r["due_date"]), status=_e(r["submission_status"]),
+                      left=i18n.duration(i18n.pick(NOTIFY_LANGUAGE), due - now))
             if due <= now + URGENT_WINDOW:  # the 3-hour reminder also covers a 24-hour one not sent yet
                 events.append({"key": f"deadline3:{aid}:{r['due_date']}", "kind": "deadline3",
                                "course": r["course"], "text": text, "also": [day_key]})
@@ -97,19 +96,14 @@ def collect_events(conn, now):
     return events
 
 
-SECTIONS = [
-    ("deadline3", "🚨 <b>3 soatdan kam qoldi — topshirilmagan!</b>"),
-    ("deadline", "⏰ <b>Muddat yaqin — topshirilmagan!</b>"),
-    ("assign", "📝 <b>Yangi topshiriqlar</b>"),
-    ("grade", "🎓 <b>Yangi baholar</b>"),
-    ("material", "📚 <b>Yangi materiallar</b>"),
-]
+SECTIONS = ["deadline3", "deadline", "assign", "grade", "material"]  # message order; headers: i18n "tg.head.<kind>"
 
 
 def build_messages(events):
     """Group events into HTML messages under Telegram's size limit: [(text, keys)]."""
     lines = []  # (line, key or None)
-    for kind, header in SECTIONS:
+    for kind in SECTIONS:
+        header = _t(f"tg.head.{kind}")
         group = [e for e in events if e["kind"] == kind]
         if not group:
             continue

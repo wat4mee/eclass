@@ -21,13 +21,11 @@ def test_message(conn):
            JOIN courses c ON c.id = a.course_id ORDER BY s.due_date IS NULL, s.due_date"""
     ).fetchall()
     pending = [r for r in rows if not notify.is_submitted(r["submission_status"])]
-    lines = ["✅ <b>eClass Companion ulandi</b>",
-             "Yangi material, yangi topshiriq, yangi baho va 24 soatdan kam qolgan muddatlar "
-             "haqida shu yerga xabar keladi."]
+    lines = [notify._t("tg.test.title"), notify._t("tg.test.body")]
     if pending:
-        lines += ["", "<b>Hozir topshirilmaganlar:</b>"]
+        lines += ["", notify._t("tg.test.pending")]
         lines += [f"• {html.escape(r['course'])} — {html.escape(r['name'])} "
-                  f"({html.escape(r['due_date'] or 'muddatsiz')})" for r in pending]
+                  f"({html.escape(r['due_date'] or notify._t('tg.no_due_short'))})" for r in pending]
     return "\n".join(lines)
 
 

@@ -14,8 +14,6 @@ from collections import Counter
 from pathlib import Path
 from urllib.parse import urlparse
 
-import requests
-
 from eclass import db, extract, notify, rag, study, syncstatus, telegram, videos
 from eclass.config import DATA_DIR, DB_PATH, FILES_DIR, RUN_LOCK
 from eclass.activities import (
@@ -26,7 +24,7 @@ from eclass.activities import (
     resolve_url,
 )
 from eclass.ai import AIError, get_provider
-from eclass.auth import EClassClient, LoginError
+from eclass.auth import EClassClient, EClassError, NetworkError, PageError, ServerError
 from eclass.lock import exclusive_run
 from eclass.courses import list_courses, parse_course_page
 from eclass.files import download_links, download_ubfile, safe_name, section_dir
@@ -105,32 +103,10 @@ def sync_course(client, conn, course, files_root, refresh, stats):
             conn.commit()
 
 
-def main():
-    with exclusive_run(RUN_LOCK):
-        started = db.now()
-        syncstatus.write(DATA_DIR, {"state": "running", "started": started, "pid": os.getpid()})
-        status = {"started": started}
-        try:
-            code, stats = _main()
-            status |= {"state": "done", "new": NEW_ITEMS[:50], "counts": {
-                "new_files": stats["files_new"] + stats["files_updated"], "errors": stats["errors"]}}
-        except LoginError as exc:
-            print(f"login failed: {exc}", file=sys.stderr)
-            status |= {"state": "error", "code": "login"}
-            code = 2
-        except (requests.ConnectionError, requests.Timeout, requests.HTTPError) as exc:
-            print(f"eClass unreachable: {type(exc).__name__}", file=sys.stderr)
-            status |= {"state": "error", "code": "network"}
-            code = 3
-        except Exception:
-            traceback.print_exc()
-            status |= {"state": "error", "code": "other"}
-            code = 4
-        syncstatus.write(DATA_DIR, status | {"finished": db.now()})
-        return code
+EXIT_CODES = {"config": 2, "login": 2, "session": 2, "network": 3, "timeout": 3, "server": 3, "page": 5}
 
 
-def _main():
+def parse_args(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--course", type=int, action="append", help="course id (repeatable)")
     ap.add_argument("--all", action="store_true", help="sync every course on the dashboard")
@@ -140,17 +116,60 @@ def _main():
     ap.add_argument("--no-ai", action="store_true", help="skip AI study packs (text is still extracted)")
     ap.add_argument("--db", default=str(DB_PATH))
     ap.add_argument("--files-dir", default=str(FILES_DIR))
-    args = ap.parse_args()
+    ap.add_argument("--trigger", choices=("dashboard", "schedule", "terminal"),
+                    default="terminal" if sys.stdin.isatty() else "schedule",
+                    help="who started this run (shown in the dashboard's sync history)")
+    args = ap.parse_args(argv)
     if not args.course and not args.all:
         ap.error("pass --course ID (repeatable) or --all")
+    return args
 
-    Path(args.db).parent.mkdir(parents=True, exist_ok=True)
-    conn = db.connect(args.db)
+
+def _scrub(text: str) -> str:
+    """Error details are stored and logged: make sure the eClass password can never be among them."""
+    secret = os.getenv("ECLASS_PASS")
+    return text.replace(secret, "***") if secret else text
+
+
+def main(argv=None) -> int:
+    args = parse_args(argv)
+    with exclusive_run(RUN_LOCK):
+        started = db.now()
+        syncstatus.write(DATA_DIR, {"state": "running", "started": started, "pid": os.getpid()})
+        Path(args.db).parent.mkdir(parents=True, exist_ok=True)
+        conn = db.connect(args.db)
+        run_id = db.start_sync_run(conn, args.trigger)
+        status = {"started": started}
+        try:
+            code, stats = run(args, conn)
+            status |= {"state": "done", "new": NEW_ITEMS[:50], "counts": {
+                "new_files": stats["files_new"] + stats["files_updated"], "errors": stats["errors"]}}
+            result = {"state": "done", "new_items": len(NEW_ITEMS), "errors": stats["errors"]}
+        except EClassError as exc:  # a known failure: the dashboard explains it by its code
+            detail = _scrub(str(exc))
+            print(f"sync failed [{exc.code}]: {detail}", file=sys.stderr)
+            status |= {"state": "error", "code": exc.code}
+            result = {"state": "error", "code": exc.code, "detail": detail[:300]}
+            code = EXIT_CODES.get(exc.code, 4)
+        except Exception as exc:
+            traceback.print_exc()
+            status |= {"state": "error", "code": "other"}
+            result = {"state": "error", "code": "other", "detail": _scrub(f"{type(exc).__name__}: {exc}")[:300]}
+            code = 4
+        db.finish_sync_run(conn, run_id, **result)
+        conn.close()
+        syncstatus.write(DATA_DIR, status | {"finished": db.now()})
+        return code
+
+
+def run(args, conn):
     client = EClassClient()
     client.login()
     print("login OK")
 
     courses = list_courses(client)
+    if not courses:  # logged in, but the dashboard has no course cards: the page layout probably changed
+        raise PageError("no courses found on the eClass dashboard")
     if args.course:
         wanted = set(args.course)
         missing = wanted - {c["id"] for c in courses}
@@ -158,9 +177,17 @@ def _main():
             print(f"not on dashboard: {sorted(missing)}", file=sys.stderr)
         courses = [c for c in courses if c["id"] in wanted]
 
-    stats = Counter()
+    stats, failed = Counter(), []
     for course in courses:
-        sync_course(client, conn, course, Path(args.files_dir), args.refresh, stats)
+        try:
+            sync_course(client, conn, course, Path(args.files_dir), args.refresh, stats)
+        except (NetworkError, ServerError, PageError) as exc:  # one slow or broken course must not cost the others
+            conn.commit()
+            stats["errors"] += 1
+            failed.append(exc)
+            print(f"  course {course['id']} skipped [{exc.code}]: {exc}", file=sys.stderr)
+    if failed and len(failed) == len(courses):
+        raise failed[0]  # nothing could be synced: the dashboard shows why
 
     print("\nvideo transcripts...")
     print(" ", videos.process(conn))
@@ -184,7 +211,6 @@ def _main():
         except telegram.TelegramError as exc:
             stats["errors"] += 1
             print(f"telegram error: {exc}", file=sys.stderr)
-    conn.close()
 
     types = ", ".join(f"{k[5:]}={v}" for k, v in sorted(stats.items()) if k.startswith("type_"))
     print("\n=== Report ===")
