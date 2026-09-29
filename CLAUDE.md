@@ -82,3 +82,9 @@ Gemini -> Ollama), textbook chapters on demand (`eclass/chapters.py`), YouTube t
 Cmd+K search (`eclass/search.py`, FTS5), sync status/button (`eclass/syncstatus.py`), today plan + studied flags,
 error pages and a Host/Origin guard in `app.py`. See README.md (setup, launchd via `deploy/install.sh`, privacy)
 and CHANGELOG.md (what changed, security review, open items). Browser checks: `tests/e2e.py` (Playwright).
+
+Since the evening of 2026-09-29: settings/paths/timeouts live in `eclass/config.py`; AI JSON replies pass
+`eclass/latex.py` (repairs \frac/\to broken by JSON escapes); eClass failures are typed (`eclass/auth.EClassError`,
+`code` -> i18n `sync.err.<code>`); every sync is recorded in `sync_runs` (home page "Sinxronlash tarixi");
+chat has a time budget (`AI_CHAT_TIMEOUT`/`AI_CHAT_BUDGET`) and `AI_FALLBACK`. Unit tests: `.venv/bin/pytest`
+(no network, temp DBs). User-visible text belongs in `eclass/i18n.py` (uz/en/ru); DB changes are additive only.

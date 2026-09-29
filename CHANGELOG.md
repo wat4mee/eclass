@@ -1,5 +1,84 @@
 # O'zgarishlar tarixi
 
+## 2026-09-29 (kechqurun): professional daraja, 0–4 bosqichlar
+
+Commit'lar: `2b8111c` (0), `b784a02` (1), `256f98b` (2), `35e0808` (3), `5850a09` (4).
+
+### 0. Topilgan ikki jiddiy xato
+- **KaTeX formulalari buzilib yoki bo'sh chiqardi.** Asl sabab: model formulani JSON satri ichida yozadi va ba'zan teskari chiziqni ikkilamaydi. JSON'da `\f`, `\t`, `\b`, `\r`, `\n` maxsus belgilar bo'lgani uchun `\frac` → "form feed" + `rac`, `\to` → tab + `o` bo'lib qolardi (`\times`, `\beta`, `\right`, `\neq` ham shunday). Gemini javobida aynan shu ko'rindi: `\frac{f(a+h)-f(a)}{h}` o'rniga qizil `rac{}{}` chiqdi.
+  - `eclass/latex.py` har bir AI javobida bu belgilarni asl LaTeX buyruqlariga qaytaradi (chat, o'quv to'plamlari, boblar, tarjimalar). Oddiy matndagi yangi qator va tab'larga tegilmaydi.
+  - Prompt'larga "JSON ichida har bir teskari chiziqni ikkilang" qoidasi qo'shildi.
+  - Chat sahifasi: `$...$`, `\(...\)`, `\[...\]` ichidagi qator uzilishi endi formulani ikkiga bo'lmaydi. KaTeX tushunmagan formula bo'sh joy yoki qizil xato o'rniga asl matni bilan ko'rsatiladi (sababi konsolda ogohlantirish sifatida). `\[1\]` endi manba raqami deb o'qilmaydi.
+  - Sinov: haqiqiy Gemini bilan 6 ta savol ("Pifagor teoremasini formula bilan yoz", "Limit nima keyin unga misol ber", hosila, masofa, kvadrat tenglama, integral) va soxta javoblarda 8 xil format 390px va 1400px da. Bo'sh paragraf, KaTeX xatosi va konsol xatosi yo'q. Brauzerda sanalgan "bo'sh" elementlar KaTeX'ning oddiy oraliq `span`'lari (`strut`, `mspace`) ekan, ular normal holat.
+- **Javobga `found=true` kabi ichki maydon nomlari sizib chiqardi.** Prompt javob maydonlarini alohida tasvirlaydi va "answer matnida boshqa maydonlarni, JSON'ni, true/false'ni eslatma" deydi. Server esa (`rag.clean_answer`) qolgan "found=true" bo'laklarini yoki maydonlar haqidagi gapni olib tashlaydi, oddiy "found" so'zi esa qoladi. 5 ta chegaraviy savolda (dekorator, kvant kompyuter, Nyuton, Java, fotosintez) sizib chiqish bo'lmadi.
+- Qo'shimcha: "topilmadi" javobida endi `[2], [6]` kabi manbasiz raqamlar qolmaydi, `[1], [1]` bittaga qisqaradi.
+
+### 1. Kod sifati
+- **`eclass/config.py`:** yo'llar (data, baza, fayllar, modellar, lock), eClass manzili, so'rovlar oralig'i, barcha vaqt chegaralari va dashboard oynalari (48 soat "yaqin", 7 kunlik halqa, 4 soat "yangi sync") bitta joyda. `.env` bitta joyda o'qiladi. Kurs ID'lari kodda yo'q, ular har safar dinamik aniqlanadi.
+- **N+1 so'rovlar:** chat qidiruvi har bir nomzod bo'lak uchun alohida so'rov yuborardi (bir savolga ~80 ta), endi bitta so'rov. Kurs sahifasi barcha kurslarning har bir videosi uchun alohida so'rov yuborardi, endi bitta.
+- **Xatolar bir xil yo'l bilan:** chat, tarjima va bob tayyorlash AI xatolarini `app.ai_failure()` orqali bir xil tushunarli xabarga aylantiradi. To'liq tafsilot faqat serverdagi logga yoziladi.
+- Takrorlar olib tashlandi (`clean_text`, `db.pack_columns`). Yangi va o'zgargan funksiyalarda type hint bor.
+
+### 2. Testlar (`tests/`, pytest, 68 ta, 1 soniyadan kam)
+- Parserlar (`tests/fixtures/` dagi namuna HTML bilan), baza, `/api/ask` (soxta AI: ko'pi bilan 3 manba, topilmasa manba yo'q, suhbat xotirasi), formula tiklash, qidiruv, ishonchlilik, xavfsizlik. Tarmoq testlarda butunlay o'chirilgan, haqiqiy baza va kalitlarga tegilmaydi.
+- **Testlar topgan xatolar (tuzatildi):**
+  1. bir soniya ichida ikki marta saqlangan kurs/faoliyat "yangi" deb qayta hisoblanardi;
+  2. yangi bazada `/api/chapter` 500 xato berardi (`chapters` jadvali kechiktirib yaratilardi);
+  3. Cmd+K indeksi kurslar o'zgarganda yangilanmasdi.
+- README'da "Testlarni ishga tushirish" bo'limi.
+
+### 3. Ishonchlilik
+- **Sinxronlash xatolari turlarga ajratildi**, har biriga tushunarli sabab bor (3 tilda):
+  - login yoki parol noto'g'ri;
+  - `.env` da login yo'q;
+  - sessiya tugab, qayta kirib bo'lmadi;
+  - tarmoq yo'q;
+  - vaqt tugadi;
+  - eClass serveri xatosi (5xx);
+  - sahifa kutilgan ko'rinishda emas.
+- **Bitta kurs sahifasi javob bermasa, qolgan kurslar baribir sinxronlanadi.** Buni bugungi haqiqiy hodisa ko'rsatdi: 14:13 dagi avtomatik sync birinchi kurs sahifasida 60 soniyalik vaqt chegarasidan o'tib, butunlay to'xtagan edi.
+- **Sinxronlash tarixi:**
+  - yangi `sync_runs` jadvali (faqat qo'shildi, eski ma'lumotlar o'zgarmadi) har bir urinishni saqlaydi: vaqt, kim boshlagani, natija, xato turi va parolsiz qisqa tafsilot;
+  - bosh sahifa pastidagi "Sinxronlash tarixi" kartasi oxirgi 10 tasini ko'rsatadi;
+  - jarayon o'lib qolgan urinish "kutilmaganda to'xtadi" deb chiqadi.
+- **AI vaqt chegaralari:**
+  - chatda har bir modelga 30 soniya, butun javobga 75 soniya beriladi (sahifa 90 soniya kutadi);
+  - sekin yoki javob bermayotgan model o'tkazib yuboriladi va keyingisi javob beradi;
+  - hammasi sekin bo'lsa, "AI juda sekin javob bermoqda" xabari chiqadi;
+  - o'quv to'plamlari uchun chegara 180 soniya (avvalgidek).
+- **`AI_FALLBACK`** (`.env`): zanjir oxiriga qo'shiladigan zaxira modellar. Hozir bo'sh, ya'ni ishlatilmaydi.
+- **Matnlar bitta joyda:** Telegram xabarlari va `notify.py --test` endi `eclass/i18n.py` dan olinadi (`NOTIFY_LANGUAGE`, sukut `uz`). Haqiqiy bazada eski va yangi kod bir xil xabar chiqarishi tekshirildi. Har bir matnning uz/en/ru varianti borligini test tekshiradi. Shablonlarda qattiq yozilgan matn qolmagan (faqat "eClass Companion" va "Shahzod AI" nomlari).
+
+### 4. Xavfsizlik tekshiruvi (2)
+
+| Tekshiruv | Natija | Qilingan ish |
+|---|---|---|
+| Flask 127.0.0.1, debug o'chiq | ✅ | `.env` da `FLASK_DEBUG=0`; test bilan tekshiriladi |
+| `.env`, `data/`, `*.db` git tarixida | ✅ yo'q | `git log --all` bo'yicha hech qachon commit qilinmagan. `.env` dagi 5 ta maxfiy qiymatning hech biri tarixda, loglarda, `deploy/` da va sinxronlash tarixida uchramadi (faqat sonlar tekshirildi, qiymatlar chiqarilmadi) |
+| `/api/*` faqat lokal, CSRF | ✅ | Host tekshiruvi (DNS rebinding) + POST'da Origin/Referer + faqat JSON; barcha 5 ta POST endpoint uchun test |
+| Clickjacking | ⚠️ → ✅ | `X-Frame-Options: DENY` qo'shildi (boshqa sayt dashboard'ni iframe'ga olib, "Sync" tugmasini bostira olmaydi); `nosniff`, `Referrer-Policy: same-origin` |
+| Parol/token log va xatolarda | ✅ | eClass xatolari faqat sahifa yo'lini yozadi; sync tafsilotida parol `***` bilan almashtiriladi (test); Telegram va AI kalitlari faqat sarlavhada |
+| SQL injection | ✅ | barcha so'rovlar parametrli; FTS qidiruv so'zlari tirnoq ichida; 7 xil hujum matni bilan test |
+| XSS | ✅ | Jinja autoescape; JS'da `esc()`; eClass'dan kelgan `<script>` nomli kurs bilan test. Qidiruv natijasi havolasi ham escape qilinadi |
+| Path traversal | ✅ | `/file/<int:id>` faqat ID bilan, yo'l `data/files/` ichida ekani tekshiriladi (test: `../`, `/etc/hosts`). Video havolasi faqat `http(s)` bo'lsa yo'naltiriladi (`javascript:` bloklandi) |
+| `data/` ruxsatlari | ⚠️ → ✅ | papka hamma uchun o'qiladigan edi (755), endi 700; `deploy/install.sh` ham shunday qiladi. `.env` allaqachon 600 |
+| Kutubxonalar | ✅ | `requirements.txt` o'rnatilgan versiyalarga qulflandi (faqat to'g'ridan-to'g'ri ishlatiladiganlar); `pip-audit` ishga tushirilmadi |
+
+### Men tanlagan sukut qiymatlar
+- `AI_FALLBACK` bo'sh: hozirgi `.env` zanjirida allaqachon 2 ta Gemini modeli bor. Groq kaliti ham bor, shuning uchun kerak bo'lsa `AI_FALLBACK=groq:openai/gpt-oss-120b` qo'yish mumkin.
+- Chat: bitta modelga 30 soniya, butun javobga 75 soniya. O'quv to'plamlari: 180 soniya (o'zgarmadi). eClass: 60 soniya (o'zgarmadi).
+- Telegram tili `uz`.
+- Sozlamalar sahifasi yo'qligi uchun sinxronlash tarixi bosh sahifaning pastiga qo'yildi.
+- Noto'g'ri LaTeX `$...$` bilan asl matn ko'rinishida qoladi: qizil xato ham, bo'sh joy ham chiqmaydi.
+
+### Keyingi safar e'tibor bering
+- **Dashboard qayta ishga tushirilishi kerak:** `launchctl kickstart -k gui/$(id -u)/com.eclass.web`. Bu buyruq sessiyada bloklandi. Shu paytgacha 5050-portdagi dashboard eski kodda ishlaydi. Avtomatik sync va eslatmalar yangi kodni o'zi oladi.
+- **GitHub:** `origin/main` 10 ta commit orqada. HTTPS uchun login yo'q, SSH kalit (`~/.ssh/id_ed25519.pub`) GitHub'ga qo'shilmagan.
+- Groq, Telegram va Gemini kalitlarini almashtirish tavsiyasi hali ham amalda.
+- CSP sarlavhasi qo'shilmadi (sahifalarda inline skriptlar ko'p). `pip-audit` bilan kutubxonalarni tekshirish mumkin.
+- Model ba'zan LaTeX'ni xato yozadi (masalan `$[a, b$`). Bu modelning xatosi: matn yo'qolmaydi, lekin chiroyli chiqmaydi.
+- Bo'sh qolgan agent worktree'si: `git worktree remove .claude/worktrees/agent-ae49f5bc79c3290f8 && git branch -D pro-upgrade`.
+
 ## 2026-09-29: A–D bosqichlari, tillar, Shahzod AI, AI zanjiri
 
 ### 0. Tillar va nom
