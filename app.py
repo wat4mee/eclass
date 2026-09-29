@@ -78,6 +78,14 @@ def _server_error(exc):
 
 
 @app.after_request
+def _security_headers(resp):
+    resp.headers.setdefault("X-Frame-Options", "DENY")          # no other site may frame the dashboard (clickjacking)
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("Referrer-Policy", "same-origin")   # local URLs are not sent to eClass / YouTube
+    return resp
+
+
+@app.after_request
 def _remember_language(resp):
     if request.args.get("lang") in i18n.LANGS:
         resp.set_cookie("lang", g.lang, max_age=365 * 24 * 3600, samesite="Lax")
@@ -672,7 +680,10 @@ def file_view(file_id):
     if row is None:
         abort(404)
     if row["path"].startswith("youtube:"):  # a lecture transcript: open the video itself
-        return redirect(row["source_url"] or f"https://youtu.be/{row['path'][8:]}")
+        target = row["source_url"] or ""
+        if urlparse(target).scheme not in ("http", "https"):  # never redirect to javascript:, file: ...
+            target = f"https://youtu.be/{row['path'][8:]}"
+        return redirect(target)
     path = Path(row["path"]).resolve()
     if not path.is_relative_to(FILES_DIR) or not path.is_file():
         abort(404)

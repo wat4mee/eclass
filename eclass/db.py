@@ -141,6 +141,35 @@ CREATE TABLE IF NOT EXISTS sync_runs (    -- one row per sync attempt; the dashb
     errors       INTEGER NOT NULL DEFAULT 0   -- activities that failed in an otherwise finished run
 );
 
+-- textbook chapters with an on-demand study pack (eclass/chapters.py)
+CREATE TABLE IF NOT EXISTS chapters (
+    file_id     INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    idx         INTEGER NOT NULL,
+    sha256      TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    start_page  INTEGER NOT NULL,
+    end_page    INTEGER NOT NULL,
+    summary     TEXT,                 -- the pack: NULL until generated
+    concepts    TEXT,
+    flashcards  TEXT,
+    quiz        TEXT,
+    language    TEXT,
+    provider    TEXT,
+    model       TEXT,
+    created_at  TEXT,
+    PRIMARY KEY (file_id, idx)
+);
+
+-- YouTube lecture transcripts (eclass/videos.py)
+CREATE TABLE IF NOT EXISTS videos (
+    activity_id  INTEGER PRIMARY KEY REFERENCES activities(id) ON DELETE CASCADE,
+    video_id     TEXT,
+    status       TEXT NOT NULL,       -- ok | none (no transcript) | not_youtube
+    file_id      INTEGER,             -- the transcript's files row when status = ok
+    detail       TEXT,
+    checked_at   TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS index_state (  -- progress per file, so long textbooks resume mid-way
     file_id    INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
     sha256     TEXT NOT NULL,

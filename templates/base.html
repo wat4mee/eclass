@@ -596,7 +596,7 @@ const tr = (key, vars = {}) => (T[key] || key).replace(/\{(\w+)\}/g, (_, k) => v
   const palHint = () => { palList.innerHTML = `<div class="pal-empty">${escHtml(T.search_start)}</div>`; };
   const palRender = () => {
     palList.innerHTML = palItems.length ? palItems.map((r, i) => `
-      <a class="pal-item ${i === palActive ? "on" : ""}" href="${r.url}" ${r.external ? 'target="_blank" rel="noopener"' : ""} data-i="${i}"
+      <a class="pal-item ${i === palActive ? "on" : ""}" href="${escHtml(r.url)}" ${r.external ? 'target="_blank" rel="noopener"' : ""} data-i="${i}"
          style="--c: ${r.color}; animation-delay: ${Math.min(i, 8) * 25}ms">
         <span class="pal-ico"><svg class="ico"><use href="#${KIND_ICON[r.kind] || "i-file"}"/></svg></span>
         <span class="pal-main"><span class="pal-title">${r.title_html}</span>${r.snippet_html ? `<span class="pal-snip">${r.snippet_html}</span>` : ""}</span>

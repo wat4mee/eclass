@@ -6,7 +6,6 @@ import html
 import json
 import re
 
-from . import chapters
 
 SCHEMA = """
 CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
@@ -25,7 +24,7 @@ def _pack_text(summary, concepts, flashcards=None):
 
 
 def rebuild(conn):
-    conn.executescript(SCHEMA + chapters.SCHEMA)
+    conn.executescript(SCHEMA)
     conn.execute("DELETE FROM search_fts")
     rows = [("course", c["id"], c["id"], c["name"], f"{c['code'] or ''} {c['professor'] or ''}")
             for c in conn.execute("SELECT id, name, code, professor FROM courses")]
@@ -52,11 +51,13 @@ def rebuild(conn):
 
 def ensure_fresh(conn):
     global _signature
-    conn.executescript(SCHEMA + chapters.SCHEMA)
-    sig = tuple(conn.execute(
+    conn.executescript(SCHEMA)
+    database = conn.execute("PRAGMA database_list").fetchone()["file"]  # one process may open several databases
+    sig = (database,) + tuple(conn.execute(
         """SELECT (SELECT COUNT(*) FROM files), (SELECT MAX(id) FROM files), (SELECT COUNT(*) FROM activities),
                   (SELECT COUNT(*) FROM study), (SELECT MAX(created_at) FROM study),
-                  (SELECT COUNT(*) FROM chapters WHERE summary IS NOT NULL)""").fetchone())
+                  (SELECT COUNT(*) FROM chapters WHERE summary IS NOT NULL),
+                  (SELECT COUNT(*) FROM courses), (SELECT MAX(last_seen) FROM courses)""").fetchone())
     if sig != _signature:
         rebuild(conn)
         _signature = sig

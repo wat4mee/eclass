@@ -15,25 +15,6 @@ FRONT_MATTER = re.compile(
 MAX_PAGES = 60   # longer chapters are split into parts
 BLOCK = 30       # pages per part / per block when there is no table of contents
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS chapters (
-    file_id     INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
-    idx         INTEGER NOT NULL,
-    sha256      TEXT NOT NULL,
-    title       TEXT NOT NULL,
-    start_page  INTEGER NOT NULL,
-    end_page    INTEGER NOT NULL,
-    summary     TEXT,                 -- the pack: NULL until generated
-    concepts    TEXT,
-    flashcards  TEXT,
-    quiz        TEXT,
-    language    TEXT,
-    provider    TEXT,
-    model       TEXT,
-    created_at  TEXT,
-    PRIMARY KEY (file_id, idx)
-);
-"""
 
 
 def is_book(n_chars):
@@ -76,7 +57,6 @@ def detect(path, n_pages):
 
 def ensure(conn, file_row):
     """Chapters for the current version of a book file, detecting them on first use."""
-    conn.executescript(SCHEMA)
     rows = conn.execute("SELECT * FROM chapters WHERE file_id = ? AND sha256 = ? ORDER BY idx",
                         (file_row["id"], file_row["sha256"])).fetchall()
     if rows:
@@ -93,7 +73,6 @@ def ensure(conn, file_row):
 
 def generate(conn, provider, file_id, idx, log=print):
     """Build and store the study pack of one chapter (no-op when it already exists)."""
-    conn.executescript(SCHEMA)
     ch = conn.execute("SELECT * FROM chapters WHERE file_id = ? AND idx = ?", (file_id, idx)).fetchone()
     if ch is None:
         raise LookupError(f"no chapter {file_id}/{idx}")

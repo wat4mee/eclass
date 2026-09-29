@@ -15,16 +15,6 @@ PAGE_CHARS = 3000
 RETRY_AFTER = timedelta(days=7)  # a video without a transcript is checked again after a week
 LANGUAGES = ["en", "uz", "ru"]
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS videos (
-    activity_id  INTEGER PRIMARY KEY REFERENCES activities(id) ON DELETE CASCADE,
-    video_id     TEXT,
-    status       TEXT NOT NULL,       -- ok | none (no transcript) | not_youtube
-    file_id      INTEGER,             -- the transcript's files row when status = ok
-    detail       TEXT,
-    checked_at   TEXT NOT NULL
-);
-"""
 
 
 def youtube_id(url):
@@ -85,7 +75,6 @@ def _record(conn, activity_id, video_id, status, file_id=None, detail=None):
 
 def process(conn, log=print):
     """Fetch transcripts for url activities that have none yet. Returns outcome counts."""
-    conn.executescript(SCHEMA)
     cutoff = (datetime.now(timezone.utc) - RETRY_AFTER).isoformat(timespec="seconds")
     rows = conn.execute(
         """SELECT a.id, a.name, a.url FROM activities a LEFT JOIN videos v ON v.activity_id = a.id
@@ -122,7 +111,6 @@ def process(conn, log=print):
 
 def for_course(conn, course_id: int) -> dict:
     """{activity_id: {status, file_id, has_study}} for one course's videos, in a single query."""
-    conn.executescript(SCHEMA)
     rows = conn.execute(
         """SELECT v.activity_id, v.status, v.file_id,
                   EXISTS (SELECT 1 FROM study s JOIN files f ON f.id = s.file_id AND f.sha256 = s.sha256

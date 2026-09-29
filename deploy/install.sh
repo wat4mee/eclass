@@ -7,6 +7,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 AGENTS="$HOME/Library/LaunchAgents"
 mkdir -p "$AGENTS" "$ROOT/data/logs"
+chmod 700 "$ROOT/data"   # grades and materials: readable by this macOS user only
 for name in sync notify web; do
   dst="$AGENTS/com.eclass.$name.plist"
   sed "s#__ROOT__#$ROOT#g" "$ROOT/deploy/com.eclass.$name.plist" > "$dst"
