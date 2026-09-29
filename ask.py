@@ -6,13 +6,12 @@
 """
 import argparse
 import sys
-from pathlib import Path
 
 from eclass import db, rag
 from eclass.ai import AIError, get_provider
+from eclass.config import DB_PATH, RUN_LOCK
 from eclass.lock import exclusive_run
 
-DATA_DIR = Path(__file__).resolve().parent / "data"
 
 
 def main():
@@ -20,14 +19,14 @@ def main():
     ap.add_argument("question", nargs="?")
     ap.add_argument("--course", type=int, help="limit the search to one course id")
     ap.add_argument("--index", action="store_true", help="index new/changed files")
-    ap.add_argument("--db", default=str(DATA_DIR / "eclass.db"))
+    ap.add_argument("--db", default=str(DB_PATH))
     args = ap.parse_args()
     if not args.question and not args.index:
         ap.error("give a question or --index")
 
     conn = db.connect(args.db)
     if args.index:
-        with exclusive_run(DATA_DIR / ".run.lock"):
+        with exclusive_run(RUN_LOCK):
             print(rag.index_pending(conn))
         if not args.question:
             return 0

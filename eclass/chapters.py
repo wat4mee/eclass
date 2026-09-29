@@ -3,7 +3,6 @@
 A book is any extracted file longer than study.MAX_AI_CHARS. Chapters are detected once per file
 version; a chapter's pack is generated only on request and never regenerated.
 """
-import json
 import math
 import re
 
@@ -114,9 +113,7 @@ def generate(conn, provider, file_id, idx, log=print):
     conn.execute(
         """UPDATE chapters SET summary = ?, concepts = ?, flashcards = ?, quiz = ?, language = ?, provider = ?,
                model = ?, created_at = ? WHERE file_id = ? AND idx = ?""",
-        (result["summary"], json.dumps(result["key_concepts"], ensure_ascii=False),
-         json.dumps(result["flashcards"], ensure_ascii=False), json.dumps(result["quiz"], ensure_ascii=False),
-         code, provider.name, provider.model, db.now(), file_id, idx))
+        (*db.pack_columns(result), code, provider.name, provider.model, db.now(), file_id, idx))
     conn.execute("DELETE FROM study_notes WHERE file_id = ? AND chunk >= ? AND chunk < ?",
                  (file_id, offset, offset + 100_000))
     conn.commit()

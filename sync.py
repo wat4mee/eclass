@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 import requests
 
 from eclass import db, extract, notify, rag, study, syncstatus, telegram, videos
+from eclass.config import DATA_DIR, DB_PATH, FILES_DIR, RUN_LOCK
 from eclass.activities import (
     SUPPORTED_TYPES,
     parse_activity,
@@ -30,7 +31,6 @@ from eclass.lock import exclusive_run
 from eclass.courses import list_courses, parse_course_page
 from eclass.files import download_links, download_ubfile, safe_name, section_dir
 
-DATA_DIR = Path(__file__).resolve().parent / "data"
 NEW_ITEMS = []  # what this run found: shown by the dashboard after a sync
 
 
@@ -106,7 +106,7 @@ def sync_course(client, conn, course, files_root, refresh, stats):
 
 
 def main():
-    with exclusive_run(DATA_DIR / ".run.lock"):
+    with exclusive_run(RUN_LOCK):
         started = db.now()
         syncstatus.write(DATA_DIR, {"state": "running", "started": started, "pid": os.getpid()})
         status = {"started": started}
@@ -138,8 +138,8 @@ def _main():
                     help="re-fetch known files/links; unchanged files (same sha256) are not rewritten")
     ap.add_argument("--no-notify", action="store_true", help="skip Telegram notifications")
     ap.add_argument("--no-ai", action="store_true", help="skip AI study packs (text is still extracted)")
-    ap.add_argument("--db", default=str(DATA_DIR / "eclass.db"))
-    ap.add_argument("--files-dir", default=str(DATA_DIR / "files"))
+    ap.add_argument("--db", default=str(DB_PATH))
+    ap.add_argument("--files-dir", default=str(FILES_DIR))
     args = ap.parse_args()
     if not args.course and not args.all:
         ap.error("pass --course ID (repeatable) or --all")

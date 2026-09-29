@@ -4,20 +4,18 @@ Materials are English while questions are usually Uzbek, so each question is fir
 rewritten into an English search query by the LLM; retrieval then runs locally and
 the LLM answers only from the retrieved passages, citing file and page.
 """
-import os
 import re
-from pathlib import Path
 
 import numpy as np
 
 from eclass import latex
+from eclass.config import MODEL_DIR, env_int
 
 EMBED_MODEL = "BAAI/bge-small-en-v1.5"
-MODEL_DIR = Path(__file__).resolve().parent.parent / "data" / "models"
 CHUNK_CHARS = 1200
 OVERLAP = 200
 TOP_K = 8
-EMBED_THREADS = int(os.getenv("EMBED_THREADS", "2"))  # keep the Mac responsive; 0 = all cores
+EMBED_THREADS = env_int("EMBED_THREADS", 2)  # keep the Mac responsive; 0 = all cores
 PAGE_BATCH = 40  # pages embedded and committed per step, so textbooks resume after an interruption
 _CANDIDATES = 40
 _RRF_K = 60
@@ -197,16 +195,15 @@ def search(conn, query, course_id=None, k=TOP_K):
     for ranking in (_keyword_ranks(conn, query, course_id), vector_ranking):
         for rank, cid in enumerate(ranking):
             scores[cid] = scores.get(cid, 0.0) + 1.0 / (_RRF_K + rank)
-    rows = {}
-    for cid in scores:
-        row = conn.execute(
-            """SELECT c.id, c.file_id, c.page, c.text, f.filename, a.name AS activity,
-                      co.id AS course_id, co.name AS course
-               FROM chunks c JOIN files f ON f.id = c.file_id
-               JOIN activities a ON a.id = f.activity_id JOIN courses co ON co.id = a.course_id
-               WHERE c.id = ?""", (cid,)).fetchone()
-        rows[cid] = row
-        if is_navigation(row["text"]):
+    ids = list(scores)
+    rows = {r["id"]: r for r in conn.execute(  # all candidates in one query (at most 2 * _CANDIDATES ids)
+        f"""SELECT c.id, c.file_id, c.page, c.text, f.filename, a.name AS activity,
+                   co.id AS course_id, co.name AS course
+            FROM chunks c JOIN files f ON f.id = c.file_id
+            JOIN activities a ON a.id = f.activity_id JOIN courses co ON co.id = a.course_id
+            WHERE c.id IN ({",".join("?" * len(ids))})""", ids)} if ids else {}
+    for cid in ids:
+        if is_navigation(rows[cid]["text"]):
             scores[cid] *= NAVIGATION_PENALTY
     # fusion picks the candidates (keywords help recall); meaning decides their order
     shortlist = sorted(scores, key=scores.get, reverse=True)[:k * 2]
@@ -297,7 +294,7 @@ _FIELD_TALK = re.compile(
 _SENTENCE = re.compile(r"[^.!?\n]*(?:[.!?]+[ \t]*|\n+|$)")
 
 
-def clean_answer(text):
+def clean_answer(text: str) -> str:
     """Remove mentions of the reply's JSON fields; everything else in the answer stays as the model wrote it."""
     cleaned, n = _FIELD_VALUE.subn("", text)
     if _FIELD_TALK.search(cleaned):  # a whole sentence about the fields: drop that sentence
@@ -344,7 +341,7 @@ def _group_sources(passages, cited):
 _CITES = re.compile(r"(?<!\\)\[\d+\](?:[ \t]*,?[ \t]*\[\d+\])*")
 
 
-def _renumber_citations(text, renumber):
+def _renumber_citations(text: str, renumber: dict[int, int]) -> str:
     """[3], [6] -> [1], [2] after grouping; numbers without a source and repeats are dropped with their commas."""
     def swap(m):
         new = dict.fromkeys(renumber.get(int(n)) for n in re.findall(r"\d+", m.group(0)))

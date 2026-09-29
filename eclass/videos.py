@@ -120,6 +120,13 @@ def process(conn, log=print):
     return stats
 
 
-def status_by_activity(conn):
+def for_course(conn, course_id: int) -> dict:
+    """{activity_id: {status, file_id, has_study}} for one course's videos, in a single query."""
     conn.executescript(SCHEMA)
-    return {r["activity_id"]: r for r in conn.execute("SELECT * FROM videos")}
+    rows = conn.execute(
+        """SELECT v.activity_id, v.status, v.file_id,
+                  EXISTS (SELECT 1 FROM study s JOIN files f ON f.id = s.file_id AND f.sha256 = s.sha256
+                          WHERE f.id = v.file_id) AS has_study
+           FROM videos v JOIN activities a ON a.id = v.activity_id WHERE a.course_id = ?""", (course_id,))
+    return {r["activity_id"]: {"status": r["status"], "file_id": r["file_id"], "has_study": bool(r["has_study"])}
+            for r in rows}

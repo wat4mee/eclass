@@ -2,7 +2,7 @@
 import os
 
 import requests
-from dotenv import load_dotenv
+from eclass.config import TELEGRAM_TIMEOUT
 
 API = "https://api.telegram.org/bot{token}/{method}"
 MAX_LEN = 4000  # Telegram limit is 4096 characters per message
@@ -14,14 +14,13 @@ class TelegramError(RuntimeError):
 
 def config():
     """Return (token, chat_id); either may be None if not configured."""
-    load_dotenv()
     return os.getenv("TELEGRAM_BOT_TOKEN") or None, os.getenv("TELEGRAM_CHAT_ID") or None
 
 
 def _call(token, method, **params):
     # requests' exception texts contain the URL (and thus the token): never let them escape.
     try:
-        resp = requests.post(API.format(token=token, method=method), data=params, timeout=30)
+        resp = requests.post(API.format(token=token, method=method), data=params, timeout=TELEGRAM_TIMEOUT)
         body = resp.json()
     except (requests.RequestException, ValueError) as exc:
         raise TelegramError(f"{method}: {type(exc).__name__}") from None

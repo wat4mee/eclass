@@ -5,10 +5,8 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
-from dotenv import load_dotenv
+from eclass.config import ECLASS_MIN_INTERVAL as MIN_INTERVAL, ECLASS_TIMEOUT, ECLASS_URL as BASE_URL
 
-BASE_URL = "https://eclass.inha.ac.kr"
-MIN_INTERVAL = 1.0  # seconds between requests
 USER_AGENT = "Mozilla/5.0 (eClass Companion; personal use)"
 
 
@@ -32,7 +30,6 @@ class EClassClient:
     """requests.Session wrapper: rate limiting + re-login on session expiry."""
 
     def __init__(self, base_url=BASE_URL):
-        load_dotenv()
         self.base_url = base_url
         self._user = os.getenv("ECLASS_USER")
         self._pass = os.getenv("ECLASS_PASS")
@@ -50,7 +47,7 @@ class EClassClient:
         wait = MIN_INTERVAL - (time.monotonic() - self._last_request)
         if wait > 0:
             time.sleep(wait)
-        kwargs.setdefault("timeout", 60)
+        kwargs.setdefault("timeout", ECLASS_TIMEOUT)
         try:
             return self.session.request(method, url, **kwargs)
         finally:

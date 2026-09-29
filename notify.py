@@ -8,11 +8,10 @@
 import argparse
 import html
 import sys
-from pathlib import Path
 
 from eclass import db, notify, telegram
+from eclass.config import DB_PATH
 
-DATA_DIR = Path(__file__).resolve().parent / "data"
 
 
 def test_message(conn):
@@ -37,7 +36,7 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="print messages, send nothing, mark nothing")
     ap.add_argument("--chat-id", action="store_true", help="show chat ids that recently messaged the bot")
     ap.add_argument("--test", action="store_true", help="send a test message to TELEGRAM_CHAT_ID")
-    ap.add_argument("--db", default=str(DATA_DIR / "eclass.db"))
+    ap.add_argument("--db", default=str(DB_PATH))
     args = ap.parse_args()
 
     if args.chat_id:

@@ -2,14 +2,12 @@
 import re
 from urllib.parse import parse_qs, urlparse
 
+from .activities import clean_text
+
 
 def _query_id(href, key="id"):
     vals = parse_qs(urlparse(href).query).get(key)
     return int(vals[0]) if vals and vals[0].isdigit() else None
-
-
-def _clean(text):
-    return " ".join(text.split())
 
 
 def list_courses(client):
@@ -25,7 +23,7 @@ def list_courses(client):
             continue
         for badge in h3.select("span.new"):
             badge.decompose()
-        title = _clean(h3.get_text(" ", strip=True))
+        title = clean_text(h3.get_text(" ", strip=True))
         m = re.match(r"(.*?)\s*\[([^\]]+)\]\s*$", title)
         name, code = (m.group(1), m.group(2)) if m else (title, None)
         prof = a.select_one(".course-title .prof")
@@ -33,7 +31,7 @@ def list_courses(client):
             "id": cid,
             "name": name,
             "code": code,
-            "professor": _clean(prof.get_text()) if prof else None,
+            "professor": clean_text(prof.get_text()) if prof else None,
         }
     return [courses[cid] for cid in sorted(courses)]
 
@@ -52,7 +50,7 @@ def parse_course_page(soup):
         name_el = li.select_one(".sectionname")
         sections[int(m.group(1))] = {
             "number": int(m.group(1)),
-            "name": _clean(name_el.get_text(" ", strip=True)) if name_el else None,
+            "name": clean_text(name_el.get_text(" ", strip=True)) if name_el else None,
             "activities": li.select("li.activity"),
         }
     return [sections[n] for n in sorted(sections)]

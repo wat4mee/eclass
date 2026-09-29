@@ -9,7 +9,8 @@ SUPPORTED_TYPES = {"ubfile", "folder", "url", "assign"}
 SKIPPED_TYPES = {"label"}  # inline text, no page of its own
 
 
-def _clean(text):
+def clean_text(text: str) -> str:
+    """Collapse runs of whitespace (HTML text) into single spaces."""
     return " ".join(text.split())
 
 
@@ -25,7 +26,7 @@ def parse_activity(li, course_id, section):
         inst = copy.copy(inst)
         for hidden in inst.select(".accesshide"):
             hidden.decompose()
-        name = _clean(inst.get_text(" ", strip=True))
+        name = clean_text(inst.get_text(" ", strip=True))
     link = li.select_one("a[href*='/mod/']")
     return {
         "id": int(m.group(1)),
@@ -65,10 +66,10 @@ def parse_assign(soup):
         cells = tr.find_all(["th", "td"])
         if len(cells) < 2:
             continue
-        key = _clean(cells[0].get_text(" ", strip=True)).lower()
+        key = clean_text(cells[0].get_text(" ", strip=True)).lower()
         col = _ASSIGN_FIELDS.get(key)
         if col and info[col] is None:
-            info[col] = _clean(cells[-1].get_text(" ", strip=True)) or None
+            info[col] = clean_text(cells[-1].get_text(" ", strip=True)) or None
     intro = soup.select_one("#intro")
     info["intro"] = intro.get_text("\n", strip=True) if intro else None
     attachments = pluginfile_links(soup, "#intro") if intro else []

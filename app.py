@@ -16,25 +16,20 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
-from dotenv import load_dotenv
 from flask import Flask, abort, g, jsonify, redirect, render_template, request, send_file, url_for
 
-from eclass import chapters, db, i18n, rag, search, study, syncstatus, videos
+from eclass import chapters, config, db, i18n, rag, search, study, syncstatus, videos
 from eclass.ai import AIError, DailyLimitReached, get_provider
+from eclass.config import DATA_DIR, DB_PATH, ECLASS_URL, ROOT
 from eclass.notify import is_submitted, parse_due
 
-ROOT = Path(__file__).resolve().parent
-DATA_DIR = ROOT / "data"
-DB_PATH = DATA_DIR / "eclass.db"
-FILES_DIR = (ROOT / "data" / "files").resolve()
-ECLASS_URL = "https://eclass.inha.ac.kr"
+FILES_DIR = config.FILES_DIR.resolve()
 
 # One stable accent per course (by id order), so a course is recognisable wherever it appears.
 COURSE_COLORS = ["#f59e0b", "#14b8a6", "#f97360", "#3b82f6", "#84cc16", "#ec4899", "#8b5cf6", "#06b6d4"]
 EN_MONTHS = {m: i for i, m in enumerate(
     ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october",
      "november", "december"], 1)}
-DEADLINE_WINDOW = timedelta(days=7)  # the countdown ring is full a week before a deadline
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -89,6 +84,18 @@ def _remember_language(resp):
     return resp
 
 
+def ai_failure(exc: Exception, what: str) -> tuple[str, int]:
+    """Message key and HTTP status for a failed AI call; the full details go to the server log only."""
+    if isinstance(exc, DailyLimitReached):
+        log.warning("%s: daily AI limit reached: %s", what, exc)
+        return "err.ai_quota", 429
+    if isinstance(exc, AIError):
+        log.error("%s: AI provider failed: %s", what, exc)
+        return "err.ai", 502
+    log.error("%s crashed", what, exc_info=exc)
+    return "err.ai", 500
+
+
 def conn():
     if "conn" not in g:
         g.conn = db.connect(DB_PATH)
@@ -113,7 +120,7 @@ def deadline(row, now):
         state = "nodate"
     elif due < now:
         state = "overdue"
-    elif due - now <= timedelta(hours=48):
+    elif due - now <= config.SOON_WINDOW:
         state = "soon"
     else:
         state = "upcoming"
@@ -123,7 +130,7 @@ def deadline(row, now):
         "due": due,
         "due_iso": due.isoformat() if due else None,
         "left": i18n.duration(g.lang, remaining) if remaining else None,
-        "ring": min(1.0, remaining / DEADLINE_WINDOW) if remaining else 0.0,
+        "ring": min(1.0, remaining / config.DEADLINE_RING) if remaining else 0.0,
         "days_left": remaining.days if remaining else 0,
         "hours_left": int(remaining.total_seconds() // 3600) if remaining else 0,
     }
@@ -214,7 +221,7 @@ def _globals():
         synced = datetime.fromisoformat(last).astimezone() if last else None
         colors = _colors()
         page = {"last_sync": i18n.ago(g.lang, now - synced) if synced else T("sync.never"),
-                "sync_fresh": bool(synced and now - synced < timedelta(hours=4)),
+                "sync_fresh": bool(synced and now - synced < config.SYNC_FRESH),
                 "sync_status": sync_status(),
                 "course_color": lambda cid: colors.get(cid, COURSE_COLORS[0])}
     except Exception:
@@ -237,7 +244,7 @@ def sync_status():
     status = syncstatus.read(DATA_DIR)
     if status.get("state") == "running" and not syncstatus.busy(DATA_DIR):
         started = datetime.fromisoformat(status.get("started", "1970-01-01T00:00:00+00:00"))
-        if datetime.now(started.tzinfo) - started > timedelta(seconds=20):  # died without writing a result
+        if datetime.now(started.tzinfo) - started > config.SYNC_START_GRACE:  # died without writing a result
             status = status | {"state": "error", "code": "stopped"}
     if status.get("state") == "error":
         status["message"] = T(f"sync.err.{status.get('code', 'other')}")
@@ -379,12 +386,8 @@ def course(course_id):
     today = date.today()
     weeks = [(s, week_info(s["name"], today), by_section[s["number"]])
              for s in sections if by_section.get(s["number"])]
-    video = {}
-    for aid, v in videos.status_by_activity(c).items():
-        pack = c.execute("SELECT 1 FROM study s JOIN files f ON f.id = s.file_id AND f.sha256 = s.sha256 WHERE f.id = ?",
-                         (v["file_id"],)).fetchone() if v["file_id"] else None
-        video[aid] = {"status": v["status"], "file_id": v["file_id"], "has_study": bool(pack)}
-    return render_template("course.html", course=info, weeks=weeks, files=files, assigns=assigns, video=video)
+    return render_template("course.html", course=info, weeks=weeks, files=files, assigns=assigns,
+                           video=videos.for_course(c, course_id))
 
 
 @app.route("/study/<int:file_id>")
@@ -422,12 +425,8 @@ def _chapter_worker(file_id, idx):
     try:
         chapters.generate(own, get_provider(), file_id, idx, log=progress)
         _jobs[key] = {"state": "done"}
-    except DailyLimitReached as exc:
-        log.warning("chapter %s/%s: daily limit: %s", file_id, idx, exc)
-        _jobs[key] = {"state": "error", "code": "quota"}
-    except Exception:
-        log.exception("chapter %s/%s failed", file_id, idx)
-        _jobs[key] = {"state": "error", "code": "ai"}
+    except Exception as exc:  # the page polls the job and shows the message
+        _jobs[key] = {"state": "error", "message_key": ai_failure(exc, f"chapter {file_id}/{idx}")[0]}
     finally:
         own.close()
 
@@ -470,7 +469,7 @@ def api_chapter(file_id, idx):
                 threading.Thread(target=_chapter_worker, args=key, daemon=True).start()
     job = dict(_jobs.get(key, {"state": "idle"}))
     if job["state"] == "error":
-        job["message"] = T("err.ai_quota" if job.get("code") == "quota" else "err.ai")
+        job["message"] = T(job.pop("message_key"))
     return jsonify(job)
 
 
@@ -496,12 +495,9 @@ def api_translate(file_id):
         study.translate_pack(conn(), get_provider(), file_id, g.lang)
     except LookupError:
         abort(404)
-    except DailyLimitReached as exc:
-        log.warning("translate %s -> %s: daily limit: %s", file_id, g.lang, exc)
-        return jsonify(error=T("err.ai_quota")), 429
-    except AIError as exc:
-        log.error("translate %s -> %s failed: %s", file_id, g.lang, exc)
-        return jsonify(error=T("err.ai")), 502
+    except Exception as exc:
+        key, status = ai_failure(exc, f"translate {file_id} -> {g.lang}")
+        return jsonify(error=T(key)), status
     return jsonify(ok=True)
 
 
@@ -586,15 +582,9 @@ def api_ask():
             log.warning("ask failed, retrying once: %s", exc)
             time.sleep(2)
             result = ask(provider)
-    except DailyLimitReached as exc:
-        log.warning("ask: daily limit: %s", exc)
-        return jsonify(error=T("err.ai_quota")), 429
-    except AIError as exc:
-        log.error("ask failed after retry: %s", exc)
-        return jsonify(error=T("err.ai")), 502
-    except Exception:  # never show a traceback to the page; details go to the log only
-        log.exception("ask crashed")
-        return jsonify(error=T("err.ai")), 500
+    except Exception as exc:  # never show a traceback to the page; details go to the log only
+        key, status = ai_failure(exc, "ask")
+        return jsonify(error=T(key)), status
     return jsonify(result)
 
 
@@ -660,8 +650,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port", type=int, default=5050)
     args = ap.parse_args()
-    load_dotenv()
-    # local only; the debugger stays off unless FLASK_DEBUG=1 is set in .env
+    # local only (.env is loaded by eclass.config); the debugger stays off unless FLASK_DEBUG=1 is set
     app.run(host="127.0.0.1", port=args.port, debug=os.getenv("FLASK_DEBUG") == "1")
 
 

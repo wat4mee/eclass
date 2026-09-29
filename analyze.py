@@ -9,13 +9,12 @@
 import argparse
 import json
 import sys
-from pathlib import Path
 
 from eclass import db, extract, study
 from eclass.ai import AIError, get_provider
+from eclass.config import DB_PATH, RUN_LOCK
 from eclass.lock import exclusive_run
 
-DATA_DIR = Path(__file__).resolve().parent / "data"
 
 
 def show(conn, file_id):
@@ -59,13 +58,13 @@ def main():
     ap.add_argument("--limit", type=int, help="max study packs to generate in this run")
     ap.add_argument("--force", action="store_true", help="regenerate even if up to date")
     ap.add_argument("--show", type=int, metavar="FILE_ID", help="print a stored study pack")
-    ap.add_argument("--db", default=str(DATA_DIR / "eclass.db"))
+    ap.add_argument("--db", default=str(DB_PATH))
     args = ap.parse_args()
 
     conn = db.connect(args.db)
     if args.show is not None:
         return show(conn, args.show)
-    with exclusive_run(DATA_DIR / ".run.lock"):
+    with exclusive_run(RUN_LOCK):
         return run(conn, args)
 
 

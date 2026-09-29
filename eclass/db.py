@@ -263,6 +263,12 @@ def save_extraction(conn, file_id, sha256, method, pages, error=None):
     conn.commit()
 
 
+def pack_columns(result: dict) -> tuple[str, str, str, str]:
+    """(summary, concepts, flashcards, quiz) of a study pack, the list fields JSON-encoded for storage."""
+    return (result["summary"], json.dumps(result["key_concepts"], ensure_ascii=False),
+            json.dumps(result["flashcards"], ensure_ascii=False), json.dumps(result["quiz"], ensure_ascii=False))
+
+
 def save_study(conn, file_id, sha256, provider, model, language, result):
     conn.execute(
         """INSERT INTO study (file_id, sha256, provider, model, language, summary,
@@ -273,10 +279,7 @@ def save_study(conn, file_id, sha256, provider, model, language, result):
                summary=excluded.summary, concepts=excluded.concepts,
                flashcards=excluded.flashcards, quiz=excluded.quiz,
                created_at=excluded.created_at""",
-        (file_id, sha256, provider, model, language, result["summary"],
-         json.dumps(result["key_concepts"], ensure_ascii=False),
-         json.dumps(result["flashcards"], ensure_ascii=False),
-         json.dumps(result["quiz"], ensure_ascii=False), now()),
+        (file_id, sha256, provider, model, language, *pack_columns(result), now()),
     )
     conn.execute("DELETE FROM study_notes WHERE file_id = ?", (file_id,))
     conn.commit()
@@ -287,9 +290,6 @@ def save_translation(conn, file_id, language, sha256, result):
         """INSERT OR REPLACE INTO study_i18n
                (file_id, language, sha256, summary, concepts, flashcards, quiz, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (file_id, language, sha256, result["summary"],
-         json.dumps(result["key_concepts"], ensure_ascii=False),
-         json.dumps(result["flashcards"], ensure_ascii=False),
-         json.dumps(result["quiz"], ensure_ascii=False), now()),
+        (file_id, language, sha256, *pack_columns(result), now()),
     )
     conn.commit()
