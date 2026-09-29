@@ -8,6 +8,9 @@ INHA University in Tashkent eClass tizimi uchun shaxsiy yordamchi. U quyidagilar
 - muddatlar va yangiliklar haqida Telegram'ga eslatma yuboradi;
 - hammasini lokal dashboard'da ko'rsatadi: http://127.0.0.1:5050 (o'zbek, ingliz va rus tillarida).
 
+> **Do'stlar uchun:** qadamma-qadam o'rnatish va foydalanish qo'llanmasi (texnik bilim talab qilinmaydi): **[QOLLANMA.md](QOLLANMA.md)**.
+> Dasturni birovga berishdan oldin uning oxiridagi "Dasturni do'stingizga berish" bo'limini o'qing: papkaning o'zini bermang, unda parolingiz bor.
+
 ## O'rnatish (yangi kompyuterda)
 
 Kerak: macOS, Python 3.11 yoki yangiroq (sinovdan o'tgan: 3.14), internet.
