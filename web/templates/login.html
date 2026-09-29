@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ t('web.login.title') }} · {{ app_name }}{% endblock %}
+{% block body_class %}auth{% endblock %}
+{% block main_class %}auth-main{% endblock %}
+{% block content %}
+<section class="auth-card card">
+  <div class="wordmark"><span class="mark" aria-hidden="true"></span>{{ app_name }}</div>
+  <p class="tagline">{{ t('web.tagline') }}</p>
+  <p class="unofficial">{{ t('web.disclaimer') }}</p>
+
+  <h1>{{ t('web.login.title') }}</h1>
+  <p class="muted">{{ t('web.login.lead') }}</p>
+  {% if error %}<div class="flash flash-error" role="alert">{{ error }}</div>{% endif %}
+  <form method="post" action="{{ url_for('auth.login') }}" class="form" autocomplete="on">
+    {{ form.csrf_token }}
+    <label>{{ t('web.login.username') }}
+      <input name="username" type="text" value="{{ form.username.data or '' }}" required maxlength="100"
+             autocomplete="username" autocapitalize="none" spellcheck="false" autofocus>
+    </label>
+    <label>{{ t('web.login.password') }}
+      <input name="password" type="password" required maxlength="256" autocomplete="current-password">
+    </label>
+    <button class="btn primary" type="submit">{{ t('web.login.submit') }}</button>
+  </form>
+  <p class="note">{{ t('web.login.how') }} <a href="{{ url_for('pages.privacy') }}">{{ t('web.nav.privacy') }}</a></p>
+</section>
+{% endblock %}

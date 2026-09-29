@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ t('web.nav.privacy') }} · {{ app_name }}{% endblock %}
+{% block content %}
+{% if not current_user.is_authenticated %}<a class="wordmark small" href="{{ url_for('auth.login') }}"><span class="mark" aria-hidden="true"></span>{{ app_name }}</a>{% endif %}
+<article class="prose">
+  <h1 class="display">{{ t('web.privacy.title') }}</h1>
+  <p class="lead">{{ t('web.privacy.intro', app=app_name) }}</p>
+  {% for part in ['password', 'session', 'data', 'protect', 'ai', 'who', 'delete', 'official'] %}
+  <section>
+    <h2>{{ t('web.privacy.' ~ part ~ '.h') }}</h2>
+    <p>{{ t('web.privacy.' ~ part) }}</p>
+  </section>
+  {% endfor %}
+</article>
+{% endblock %}

@@ -5,6 +5,7 @@ Error messages name a missing setting, never a value.
 """
 import os
 import secrets
+from datetime import timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -45,11 +46,31 @@ def secret_key() -> str:
     return secrets.token_hex(32)  # local development only: everyone is logged out when the server restarts
 
 
+def _list(name: str, default: str) -> list[str]:
+    return [item.strip().lower() for item in os.getenv(name, default).split(",") if item.strip()]
+
+
 def from_env() -> dict:
     """Flask config for create_app()."""
+    secure = hosted() or os.getenv("COOKIE_SECURE") == "1"  # HTTPS-only cookies; off only for local http
     return {
-        "APP_NAME": os.getenv("APP_NAME", "Study Companion"),
+        "APP_NAME": os.getenv("APP_NAME", "sclass"),
         "SECRET_KEY": secret_key(),
         "DATABASE_URL": database_url(),
         "HOSTED": hosted(),
+        # requests with another Host header are refused (DNS rebinding); Render: add the service's domain
+        "ALLOWED_HOSTS": _list("ALLOWED_HOSTS", "localhost,127.0.0.1"),
+        "PROXY_HOPS": int(os.getenv("PROXY_HOPS", "1")),  # proxies in front of the app (Render: 1)
+        # cookies: HTTPS only, invisible to JavaScript, not sent on cross-site requests
+        "SESSION_COOKIE_NAME": "sclass_session",
+        "SESSION_COOKIE_SECURE": secure, "SESSION_COOKIE_HTTPONLY": True, "SESSION_COOKIE_SAMESITE": "Lax",
+        "REMEMBER_COOKIE_SECURE": secure, "REMEMBER_COOKIE_HTTPONLY": True, "REMEMBER_COOKIE_SAMESITE": "Lax",
+        "REMEMBER_COOKIE_DURATION": timedelta(days=14),
+        "PERMANENT_SESSION_LIFETIME": timedelta(days=14),
+        "WTF_CSRF_TIME_LIMIT": None,  # a CSRF token is valid for the whole session
+        # login rate limits: per IP (campus Wi-Fi shares one IP, so not too low) and per eClass username
+        "RATELIMIT_STORAGE_URI": os.getenv("RATELIMIT_STORAGE_URI", "memory://"),
+        "LOGIN_LIMIT_IP": os.getenv("LOGIN_LIMIT_IP", "10 per minute;60 per hour"),
+        "LOGIN_LIMIT_USER": os.getenv("LOGIN_LIMIT_USER", "5 per 15 minutes"),
+        "ECLASS_SESSION_MINUTES": int(os.getenv("ECLASS_SESSION_MINUTES", "120")),  # saved eClass session lifetime
     }

@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · {{ app_name }}{% endblock %}
+{% block main_class %}auth-main{% endblock %}
+{% block content %}
+<section class="auth-card card error-card">
+  <div class="code">{{ code }}</div>
+  <h1>{{ title }}</h1>
+  <p class="muted">{{ text }}</p>
+  <a class="btn primary" href="{{ url_for('pages.home') }}">{{ t('err.home') }}</a>
+</section>
+{% endblock %}

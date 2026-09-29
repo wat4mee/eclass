@@ -7,6 +7,7 @@ A student reaches course content only through their own row in `enrollments`.
 """
 from datetime import date, datetime
 
+from flask_login import UserMixin
 from sqlalchemy import (BigInteger, CheckConstraint, Computed, Date, DateTime, ForeignKey, Identity, Index, Integer,
                         MetaData, String, Text, UniqueConstraint, false, func, text)
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
@@ -35,7 +36,7 @@ def _user_fk(primary_key=False):
 
 # ---------------------------------------------------------------- people
 
-class User(Base):
+class User(UserMixin, Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(Integer, Identity(), primary_key=True)
     eclass_username: Mapped[str] = mapped_column(String(100), unique=True)  # Moodle usernames are lowercase

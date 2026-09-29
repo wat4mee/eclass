@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1 class="display">{{ t('web.home.hello', name=current_user.display_name or current_user.eclass_username) }}</h1>
+  <p class="muted">{{ t('web.home.soon') }}</p>
+</section>
+{% endblock %}

@@ -38,6 +38,69 @@ def engine():
     engine.dispose()
 
 
+class FakeEClass:
+    """Stands in for eclass.auth.EClassClient: tests never reach eClass and never use real credentials."""
+    PASSWORD = "correct horse battery"
+    COOKIE = "fake-moodle-session-7f3a9c"
+
+    def __init__(self, username=None, password=None, cookies=None):
+        self.username, self.password = username, password
+
+    def login(self):
+        from eclass.auth import LoginError, NetworkError
+        if self.username == "u-offline":
+            raise NetworkError("ConnectionError: /login.php")
+        if self.username == "u-crash":
+            raise RuntimeError(f"unexpected page while logging in with password={self.password}")
+        if self.password != self.PASSWORD:
+            raise LoginError("login failed (redirected back to login page)")
+        return True
+
+    def forget_password(self):
+        self.password = None
+
+    def export_cookies(self):
+        return [{"name": "MoodleSession", "value": self.COOKIE, "domain": "eclass.inha.ac.kr", "path": "/"}]
+
+
+@pytest.fixture
+def app(engine, monkeypatch):
+    """The hosted app on the test database, with a fake eClass and a fresh encryption key."""
+    from cryptography.fernet import Fernet
+    from sqlalchemy import text
+
+    import web
+    from web import eclass_login
+    from web.extensions import limiter
+
+    monkeypatch.setenv("CREDENTIAL_KEY", Fernet.generate_key().decode())
+    monkeypatch.delenv("CREDENTIAL_KEY_PREVIOUS", raising=False)
+    monkeypatch.delenv("CREDENTIAL_KEY_VERSION", raising=False)
+    monkeypatch.setattr(eclass_login, "EClassClient", FakeEClass)
+    app = web.create_app({"DATABASE_URL": TEST_DATABASE_URL, "TESTING": True, "SECRET_KEY": "test-secret"})
+    limiter.reset()
+    yield app
+    app.extensions["db_engine"].dispose()  # close this app's pooled connections
+    with engine.begin() as connection:  # the app commits for real: empty every table after the test
+        connection.execute(text("TRUNCATE users, courses RESTART IDENTITY CASCADE"))
+    limiter.reset()
+
+
+@pytest.fixture
+def client(app):
+    return app.test_client()
+
+
+def csrf_token(client, path="/login") -> str:
+    import re
+    html = client.get(path).get_data(as_text=True)
+    return re.search(r'name="csrf_token"[^>]*value="([^"]+)"', html).group(1)
+
+
+def sign_in(client, username="u2410001", password=FakeEClass.PASSWORD):
+    return client.post("/login", data={"username": username, "password": password, "csrf_token": csrf_token(client)})
+
+
 @pytest.fixture
 def db(engine):
     """A session whose work is rolled back after the test; commits inside the test become SAVEPOINT releases."""

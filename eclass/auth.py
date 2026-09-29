@@ -70,16 +70,30 @@ def _bounced_to_login(resp):
 class EClassClient:
     """requests.Session wrapper: rate limiting + re-login on session expiry."""
 
-    def __init__(self, base_url=BASE_URL):
+    def __init__(self, base_url=BASE_URL, username=None, password=None, cookies=None):
+        """Without arguments: the login in .env (the Mac version). The hosted version passes a student's own
+        username/password, or `cookies` of a session it saved earlier. Then .env is never used, so a student's
+        expired session can never be renewed with someone else's login: it raises SessionExpired instead."""
         self.base_url = base_url
-        self._user = os.getenv("ECLASS_USER")
-        self._pass = os.getenv("ECLASS_PASS")
-        if not self._user or not self._pass:
+        explicit = username is not None or password is not None or cookies is not None
+        self._user = username if explicit else os.getenv("ECLASS_USER")
+        self._pass = password if explicit else os.getenv("ECLASS_PASS")
+        if cookies is None and (not self._user or not self._pass):
             raise ConfigError("ECLASS_USER / ECLASS_PASS not set in .env")
         self.session = requests.Session()
         self.session.headers["User-Agent"] = USER_AGENT
+        for c in cookies or []:
+            self.session.cookies.set(c["name"], c["value"], domain=c.get("domain") or "", path=c.get("path") or "/")
         self._last_request = 0.0
         self.request_count = 0
+
+    def export_cookies(self) -> list[dict]:
+        """The eClass session cookies, so the session can be restored later (the hosted version encrypts them)."""
+        return [{"name": c.name, "value": c.value, "domain": c.domain, "path": c.path} for c in self.session.cookies]
+
+    def forget_password(self) -> None:
+        """Drop the password from memory once logged in; an expired session then needs a new login."""
+        self._pass = None
 
     def url(self, path):
         return urljoin(self.base_url, path)
@@ -100,6 +114,8 @@ class EClassClient:
             self.request_count += 1
 
     def login(self):
+        if not self._user or not self._pass:  # a restored session that expired: only the student can log in again
+            raise SessionExpired("eClass session expired")
         resp = _checked(self._raw("GET", self.url("/login.php")))
         soup = BeautifulSoup(resp.text, "html.parser")
         form = None
