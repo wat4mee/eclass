@@ -26,7 +26,7 @@ cp .env.example .env        # keyin .env ni to'ldiring
 | `ECLASS_USER`, `ECLASS_PASS` | ha | eClass login va paroli |
 | `AI_PROVIDER` | yo'q | `auto` (sukut bo'yicha, pastga qarang), `groq`, yoki ro'yxat: `gemini,groq:openai/gpt-oss-120b,ollama` |
 | `GROQ_API_KEY` | AI uchun | https://console.groq.com dan bepul kalit |
-| `GEMINI_API_KEY` | yo'q | https://aistudio.google.com/apikey dan bepul kalit; `GEMINI_MODEL` sukut bo'yicha `gemini-3.8-flash` |
+| `GEMINI_API_KEY` | yo'q | https://aistudio.google.com/apikey dan bepul kalit; `GEMINI_MODEL` sukut bo'yicha `gemini-3.5-flash-lite` |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | yo'q | yo'q bo'lsa, Telegram eslatmalari jimgina o'tkazib yuboriladi |
 | `STUDY_LANGUAGE` | yo'q | o'quv to'plamlari tili: `uz` (sukut), `en`, `ru` |
 | `EMBED_THREADS` | yo'q | qidiruv indeksi uchun CPU yadrolari (sukut: 2) |
@@ -35,6 +35,9 @@ cp .env.example .env        # keyin .env ni to'ldiring
 **AI zanjiri (`AI_PROVIDER=auto`).** Bepul limitlar tugab qolmasligi uchun provayderlar navbat bilan ishlatiladi. Birining kunlik limiti tugasa, keyingisiga avtomatik o'tiladi:
 Groq `gpt-oss-120b` → Groq `qwen3.8-27b` → Groq `gpt-oss-20b` → Gemini (kalit bo'lsa) → Ollama (ishlayotgan bo'lsa).
 Groq'da har bir modelning o'z kunlik limiti bor (bepul tarifda kuniga 200 000 token).
+Model band bo'lsa (503 yoki daqiqalik limit), zanjir kutmasdan keyingisiga o'tadi.
+
+Faqat Gemini ishlatish uchun (tez va barqaror): `AI_PROVIDER=gemini:gemini-3.5-flash-lite,gemini:gemini-3.5-flash`.
 
 Telegram chat ID'ni topish: botingizga istalgan xabar yozing, keyin `.venv/bin/python notify.py --chat-id` ni ishga tushiring. Ulanganini `.venv/bin/python notify.py --test` bilan tekshirasiz.
 

@@ -45,6 +45,10 @@
 
 ### AI zanjiri (bepul limit tugab qolmasligi uchun)
 - `AI_PROVIDER=auto`: Groq `gpt-oss-120b` → `qwen3.8-27b` → `gpt-oss-20b` → Gemini `gemini-3.8-flash` → Ollama. Birining kunlik limiti tugasa, keyingisiga avtomatik o'tiladi.
+- Kalit rad etilsa ham (bekor qilingan, xato yozilgan yoki boshqa qatorga yozilgan: 401/403), zanjir o'sha provayderni o'tkazib, keyingisiga o'tadi.
+- Model band bo'lsa (503, daqiqalik 429 yoki "request too large"), zanjir kutib o'tirmasdan keyingi modelga o'tadi. Faqat zanjirdagi oxirgi model qisqa kutib, qayta urinadi. Gemini'ning "retry in 41s" ko'rinishidagi kutish vaqti ham o'qiladi. Oldin Groq `qwen` modeli 1000 tokenlik chiqish limiti tufayli har bir savolda 21 soniyadan bir necha marta kuttirardi.
+- **Hozirgi sozlama: faqat Gemini.** `.env` da `AI_PROVIDER=gemini:gemini-3.5-flash-lite,gemini:gemini-3.5-flash`. `gemini-3.8-flash` tez-tez band bo'lgani uchun (503/429) sukut bo'yicha model `gemini-3.5-flash-lite` qilindi: sinovlarda eng tez va eng barqaror chiqdi. Chat javobi o'rtacha 4–9 soniya oladi, oldin 47 soniya olardi.
+- `.env.example` ga qo'shimcha sozlamalar va ularning sukut bo'yicha qiymatlari qo'shildi.
 
 ### D. Ko'rinish va xavfsizlik
 - 404 va 500 uchun ilova dizaynidagi sahifalar tayyor, 3 tilda. `/api/*` xatolari JSON ko'rinishida qaytadi.

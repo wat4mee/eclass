@@ -24,6 +24,14 @@ class DailyLimitReached(AIError):
     """The provider's daily quota is exhausted; resume on a later run."""
 
 
+class InvalidKey(AIError):
+    """The API key was rejected (revoked, mistyped or pasted into the wrong slot)."""
+
+
+class Busy(AIError):
+    """This model cannot take the request right now (overloaded, per-minute limit, request too large)."""
+
+
 _ESCAPED_UNICODE = re.compile(r"\\u([0-9a-fA-F]{4})")
 
 
@@ -46,6 +54,7 @@ class OpenAICompatProvider:
     key_env = ""
     tpm = 0                 # tokens per minute to pace for (0 = no pacing)
     max_wait = 120          # seconds; a longer retry-after means the daily quota is gone
+    patient = True          # False (set by the chain): raise Busy instead of waiting, so the next model answers
 
     def __init__(self, model):
         self._key = os.getenv(self.key_env)
@@ -94,14 +103,25 @@ class OpenAICompatProvider:
                 raise AIError(f"{self.name}: {type(exc).__name__}") from None
             message = _error_message(resp) if resp.status_code != 200 else ""
             if resp.status_code == 429:
-                wait = float(resp.headers.get("retry-after", 20))
+                wait = _retry_after(resp, message)
                 if self._is_daily(message, wait):
                     raise DailyLimitReached(f"{self.name} {self.model}: {message}")
+                if not self.patient or "too large" in message.lower():  # waiting would not help this call
+                    raise Busy(f"{self.name} {self.model}: {message}")
                 time.sleep(wait + 1)
                 continue
+            if resp.status_code in (401, 403) or (resp.status_code == 400 and "api key" in message.lower()):
+                raise InvalidKey(f"{self.name}: {self.key_env} rejected ({resp.status_code})")
             if resp.status_code == 400 and self._retry_400(resp, message) and retries < 2:
                 retries += 1
                 self._window.append((time.monotonic(), estimate))
+                continue
+            overloaded = resp.status_code in (500, 502, 503, 504)
+            if overloaded and not self.patient:
+                raise Busy(f"{self.name} {self.model}: {resp.status_code} {message}")
+            if overloaded and retries < 2:  # last model in the chain: brief back-off
+                retries += 1
+                time.sleep(3 * retries)
                 continue
             if resp.status_code != 200:
                 raise AIError(f"{self.name} {resp.status_code}: {message}")
@@ -144,7 +164,7 @@ class GeminiProvider(OpenAICompatProvider):
     key_env = "GEMINI_API_KEY"
 
     def __init__(self, model=None):
-        super().__init__(model or os.getenv("GEMINI_MODEL", "gemini-3.8-flash"))
+        super().__init__(model or os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"))
 
     def _extra(self):
         return {"reasoning_effort": "low"}
@@ -195,16 +215,21 @@ class ChainProvider:
 
     def complete_json(self, system, user, schema, max_tokens):
         last = None
-        while self.providers:
-            provider = self.providers[0]
+        for provider in list(self.providers):
+            provider.patient = provider is self.providers[-1]  # only the last one waits out a busy spell
             try:
                 result = provider.complete_json(system, user, schema, max_tokens)
-            except DailyLimitReached as exc:  # this model is done for today: move on
+            except (DailyLimitReached, InvalidKey) as exc:  # done for today / bad key: drop it
                 last = exc
-                self.providers.pop(0)
+                self.providers.remove(provider)
+                continue
+            except Busy as exc:  # overloaded or rate limited: the next one answers this call
+                last = exc
                 continue
             self.name, self.model = provider.name, provider.model
             return result
+        if self.providers:  # the ones left were only busy: a retry can still succeed
+            raise last if isinstance(last, Busy) else Busy(str(last))
         raise last or DailyLimitReached("no AI provider left")
 
 
@@ -242,6 +267,14 @@ def _error_body(resp):
         body = body[0] if body else {}
     err = body.get("error", {}) if isinstance(body, dict) else {}
     return err if isinstance(err, dict) else {"message": str(err)}
+
+
+def _retry_after(resp, message):
+    """Seconds to wait: the retry-after header, or Gemini's "Please retry in 41.9s" in the message."""
+    if resp.headers.get("retry-after"):
+        return float(resp.headers["retry-after"])
+    match = re.search(r"retry in ([\d.]+)s", message)
+    return float(match.group(1)) if match else 20.0
 
 
 def _error_code(resp):
