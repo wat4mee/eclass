@@ -1,11 +1,12 @@
 """Milestone 3: syncing a student from (fake) eClass into Postgres."""
+import threading
 from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import func, select, text
 
 from eclass.auth import PageError
-from web import eclass_login, sync, users
+from web import eclass_login, sync, tasks, users
 from web.models import (Activity, Course, EClassSession, Enrollment, Material, MaterialPage, SyncRun,
                         UserAssignment)
 from tests.web.fake_eclass import YOUTUBE, FakeSite
@@ -136,3 +137,70 @@ def test_a_run_that_died_is_not_shown_as_running_forever(world):
         db.add(SyncRun(user_id=uid, trigger="login", started_at=datetime.now(timezone.utc) - timedelta(hours=2)))
         db.commit()
         assert not sync.is_running(db, uid)
+
+
+def test_running_means_a_live_process_holds_the_lock(world, engine):
+    """A server restart (out of memory, redeploy) kills a sync mid-way: its run must not spin for half an hour."""
+    _, sessions, make_user = world
+    uid = make_user()
+    with sessions() as db:
+        db.add(SyncRun(user_id=uid, trigger="login"))  # started a second ago
+        db.commit()
+    with engine.connect() as other:  # the process running it is alive
+        other.execute(text("SELECT pg_advisory_lock(:ns, :uid)"), {"ns": sync.LOCK_NAMESPACE, "uid": uid})
+        with sessions() as db:
+            assert sync.is_running(db, uid)
+            sync.reap(db, uid)  # nothing to close while the lock is held
+            assert db.scalar(select(SyncRun.status)) == "running"
+        other.execute(text("SELECT pg_advisory_unlock(:ns, :uid)"), {"ns": sync.LOCK_NAMESPACE, "uid": uid})
+    with sessions() as db:  # the process died: the lock went with it
+        assert not sync.is_running(db, uid)
+        sync.reap(db, uid)
+        run = db.scalar(select(SyncRun))
+        assert (run.status, run.error_code) == ("error", "stopped") and run.finished_at is not None
+
+
+def test_the_status_page_closes_a_dead_run(client, app):
+    from tests.web.conftest import sign_in
+    client.get("/login?lang=en")
+    sign_in(client)
+    with app.extensions["db_sessions"]() as db:
+        db.add(SyncRun(user_id=1, trigger="login"))
+        db.commit()
+    status = client.get("/sync/status").get_json()
+    assert status["state"] == "error" and "stopped unexpectedly" in status["message"]
+
+
+# ---------------------------------------------------------------- the web process's queue
+
+REAL_START = tasks.start_sync  # the app fixture replaces it; these tests use the real queue
+
+
+def test_syncs_run_one_at_a_time_and_are_never_queued_twice(app, monkeypatch):
+    calls, active, peak = [], [0], [0]
+    release = threading.Event()
+
+    def fake_sync(engine, sessions, user_id, trigger):
+        active[0] += 1
+        peak[0] = max(peak[0], active[0])
+        calls.append(user_id)
+        release.wait(5)
+        active[0] -= 1
+    monkeypatch.setattr(tasks.sync, "sync_user", fake_sync)
+    for user_id in (101, 102, 101, 103):  # 101 signs in twice while its sync is still queued or running
+        REAL_START(app, user_id, "login")
+    assert tasks.waiting(101) and tasks.waiting(103)
+    release.set()
+    tasks._queue.join()
+    assert calls == [101, 102, 103] and peak[0] == 1
+    assert not tasks.waiting(101) and not tasks.waiting(103)
+
+
+def test_a_queued_student_is_told_so(client, app, monkeypatch):
+    from tests.web.conftest import sign_in
+    client.get("/login?lang=en")
+    sign_in(client)
+    monkeypatch.setattr(tasks, "_waiting", {1})
+    status = client.get("/sync/status").get_json()
+    assert status["state"] == "running" and "You are in the queue" in status["message"]
+    assert "You are in the queue" in client.get("/").get_data(as_text=True)

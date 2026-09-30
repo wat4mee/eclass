@@ -8,11 +8,12 @@ read their text (for search and the AI chat), then dropped; students open files 
     python -m web.sync --packs 10         # only generate up to 10 study packs (web/packs.py)
 """
 import argparse
+import gc
 import hashlib
 import logging
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from urllib.parse import unquote, urlparse
 
 from bs4 import BeautifulSoup
@@ -33,9 +34,8 @@ from web.models import (Activity, Course, EClassCredential, Enrollment, Material
 from web.redact import redact
 
 log = logging.getLogger("web.sync")
-MAX_FILE_BYTES = env_int("SYNC_MAX_FILE_MB", 30) * 1024 * 1024  # bigger files (textbooks): link only, no text
+MAX_FILE_BYTES = env_int("SYNC_MAX_FILE_MB", 20) * 1024 * 1024  # bigger files (textbooks): link only, no text
 LOCK_NAMESPACE = 7141  # pg advisory lock (namespace, user_id): one sync per student at a time
-STALE_RUN = timedelta(minutes=30)  # a "running" sync older than this died without finishing
 ECLASS_HOST = urlparse(ECLASS_URL).netloc
 SESSION_MINUTES = env_int("ECLASS_SESSION_MINUTES", 120)
 PAUSE_SECONDS = env_int("SYNC_PAUSE_SECONDS", 20)  # between two students in a scheduled run: be polite to eClass
@@ -59,15 +59,17 @@ def _name_from_url(url: str) -> str:
 
 # ---------------------------------------------------------------- files
 
-def _read(resp) -> bytes | None:
-    """The response body, or None when it is larger than MAX_FILE_BYTES (reading stops there)."""
-    chunks, total = [], 0
+def _read(resp) -> bytearray | None:
+    """The response body, or None when it is larger than MAX_FILE_BYTES (reading stops there).
+
+    Grown in one buffer: joining chunks at the end would hold the file twice in memory for a moment.
+    """
+    data = bytearray()
     for chunk in resp.iter_content(64 * 1024):
-        chunks.append(chunk)
-        total += len(chunk)
-        if total > MAX_FILE_BYTES:
+        data += chunk
+        if len(data) > MAX_FILE_BYTES:
             return None
-    return b"".join(chunks)
+    return data
 
 
 def store_file(db: Session, activity_id: int, resp, name: str | None = None) -> bool:
@@ -108,6 +110,9 @@ def store_file(db: Session, activity_id: int, resp, name: str | None = None) -> 
     except Exception as exc:  # a corrupt or protected file must not stop the sync
         material.extract_error = type(exc).__name__
         return True
+    finally:
+        del data
+        gc.collect()  # the file and the PDF library's copy of it go before the next file comes in
     db.add_all(MaterialPage(material_id=material.id, page=i, text=t) for i, t in enumerate(pages, 1) if t.strip())
     material.n_pages, material.n_chars = len(pages), sum(len(t) for t in pages)
     return True
@@ -307,9 +312,28 @@ def latest_run(db: Session, user_id: int) -> SyncRun | None:
     return db.scalar(select(SyncRun).where(SyncRun.user_id == user_id).order_by(SyncRun.id.desc()).limit(1))
 
 
+def _lock_held(db: Session, user_id: int) -> bool:
+    """Whether some process holds this student's sync lock right now (it is released when that process dies)."""
+    return bool(db.scalar(text(
+        "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND classid::bigint = :ns "
+        "AND objid::bigint = :uid AND objsubid = 2 AND granted"), {"ns": LOCK_NAMESPACE, "uid": user_id}))
+
+
 def is_running(db: Session, user_id: int) -> bool:
+    """A run is live only while its process holds the lock: the lock is taken before the run is recorded and
+    released after it is closed, so a "running" row without a lock is a sync whose process died."""
     return bool(db.scalar(select(func.count()).select_from(SyncRun).where(
-        SyncRun.user_id == user_id, SyncRun.status == "running", SyncRun.started_at > _now() - STALE_RUN)))
+        SyncRun.user_id == user_id, SyncRun.status == "running"))) and _lock_held(db, user_id)
+
+
+def reap(db: Session, user_id: int) -> None:
+    """Close runs of this student whose process died (restart, out of memory) so they stop showing as running."""
+    if _lock_held(db, user_id):
+        return
+    for run in db.scalars(select(SyncRun).where(SyncRun.user_id == user_id, SyncRun.status == "running")):
+        run.status, run.error_code, run.finished_at = "error", "stopped", _now()
+        run.error_summary = "the sync stopped without finishing (the server restarted)"
+    db.commit()
 
 
 # ---------------------------------------------------------------- scheduled runs (cron)

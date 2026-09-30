@@ -17,7 +17,7 @@
   {% if status.state == 'expired' %}<a class="btn small" href="{{ url_for('auth.reconnect') }}">{{ t('web.sync.reconnect') }}</a>{% endif %}
 </div>
 {% elif status.state in ('running', 'none') %}
-<div class="sync-note reveal" role="status"><span class="sync-spin"></span>{{ t('web.sync.running') if status.state == 'running' else t('web.home.soon') }}</div>
+<div class="sync-note reveal" role="status"><span class="sync-spin"></span>{{ status.message if status.state == 'running' else t('web.home.soon') }}</div>
 {% endif %}
 
 <section class="hero">

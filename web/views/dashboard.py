@@ -24,11 +24,14 @@ FRESH = timedelta(hours=6)  # the sync dot is green when the last sync is newer 
 
 def sync_status(db, user_id: int) -> dict:
     """The latest sync of this student: `message` for the banner and tooltip, `short` for the pill in the top bar."""
+    if sync.is_running(db, user_id):
+        return {"state": "running", "message": T("web.sync.running"), "short": T("js.sync_running")}
+    if tasks.waiting(user_id):  # queued behind other students' syncs in this process
+        return {"state": "running", "message": T("web.sync.queued"), "short": T("js.sync_running")}
+    sync.reap(db, user_id)  # a "running" run without a live process (the server restarted) is closed
     run = sync.latest_run(db, user_id)
     if run is None:
         return {"state": "none", "message": T("sync.never"), "short": T("sync.never")}
-    if run.status == "running" and sync.is_running(db, user_id):
-        return {"state": "running", "message": T("web.sync.running"), "short": T("js.sync_running")}
     finished = run.finished_at or run.started_at
     when = base_i18n.ago(g.lang, datetime.now(timezone.utc) - finished)
     if run.status == "done":
