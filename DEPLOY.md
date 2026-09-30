@@ -8,7 +8,7 @@ Nima bo'ladi:
 | Qism | Qayerda | Narxi |
 |---|---|---|
 | Sayt (`sclass`) | Render, web service | bepul (`free`); 15 daqiqa ishlatilmasa uxlaydi |
-| Fon sinxronlash (`sclass-sync`) | Render, cron job, har 3 soatda | kamida $1/oy + ishlagan vaqti |
+| Fon sinxronlash | GitHub Actions har 3 soatda saytni chaqiradi (9-bo'lim) | bepul |
 | Ma'lumotlar bazasi | Neon Postgres | bepul tarif yetadi |
 | AI | Google Gemini | bepul limit, barcha talabalar uchun umumiy |
 
@@ -61,8 +61,9 @@ kalit oling. Bu **GEMINI_API_KEY**.
 
 ## 4. Render: Blueprint
 
-1. [render.com](https://render.com) da GitHub orqali ro'yxatdan o'ting. Cron pullik bo'lgani uchun **karta qo'shish**
-   so'raladi (Billing).
+1. [render.com](https://render.com) da GitHub orqali ro'yxatdan o'ting. Blueprint pullik cron'ni ham yaratadi, shuning
+   uchun **karta** so'raladi. Bepul yo'l: faqat web service'ni qo'lda yarating, fon sinxronlashni esa GitHub Actions
+   bajaradi (9-bo'lim).
 2. **New → Blueprint** → repozitoriyni tanlang → branch: **`hosted`**. Render `render.yaml` ni o'qib, ikkita xizmatni
    (`sclass`, `sclass-sync`) va `sclass-settings` sozlamalar guruhini ko'rsatadi.
 3. U 3 ta qiymatni **har bir xizmat uchun alohida** so'raydi. Ikkalasiga **bir xil** qiymat kiriting:
@@ -126,6 +127,50 @@ Kalit oshkor bo'lgan deb gumon qilsangiz yoki muntazam xavfsizlik uchun:
 | Sayt "400 Bad Request" beradi | O'z domeningizdan ochyapsiz: `ALLOWED_HOSTS` ga qo'shing (6-qadam). |
 | Hamma talabalarda "eClass javob bermayapti" | eClass Render IP manzilini cheklagan bo'lishi mumkin: bir necha soatdan keyin qayta ko'ring; cron ketma-ket 3 ta xatodan keyin o'zi to'xtaydi. |
 | AI "limit tugadi" deydi | Gemini bepul limiti tugagan (hamma uchun umumiy): ertasi kuni tiklanadi. |
+
+## 9. Bepul tarifda avtomatik sinxronlash (GitHub Actions)
+
+Render'ning bepul tarifida Cron Job yo'q (u doim kamida $1/oy). Shuning uchun har 3 soatda GitHub Actions saytdagi
+himoyalangan `POST /internal/sync-all` manzilini chaqiradi. Sayt darhol `202 {"status": "started"}` qaytaradi va
+"Fonda sinxronlab tur" ni yoqqan talabalarni o'zining fon navbatida birma-bir sinxronlaydi.
+
+1. **CRON_SECRET yarating** (uzun tasodifiy matn; hech kimga ko'rsatmang):
+   ```bash
+   python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+   ```
+2. **Render:** `eclass` xizmati → **Environment** → **Add Environment Variable**: Key `CRON_SECRET`, Value yuqoridagi
+   matn → **Save Changes** (xizmat qayta joylanadi). `CRON_SECRET` bo'lmasa yoki 16 belgidan qisqa bo'lsa, manzil
+   o'chiq turadi va 503 qaytaradi.
+3. **GitHub** (repo → **Settings → Secrets and variables → Actions**):
+   - **Secrets** yorlig'i → **New repository secret**: Name `CRON_SECRET`, qiymati Render'dagi bilan **aynan bir xil**;
+   - **Variables** yorlig'i → **New repository variable**: Name `RENDER_URL`, qiymati `https://eclass-zrs8.onrender.com`.
+
+   GitHub CLI o'rnatilgan bo'lsa, xuddi shu ish:
+   ```bash
+   gh secret set CRON_SECRET          # qiymatni so'raydi, ekranga chiqarmaydi
+   gh variable set RENDER_URL --body https://eclass-zrs8.onrender.com
+   ```
+4. **Workflow default branch'da bo'lishi shart.** GitHub jadval bo'yicha va qo'lda ishga tushirishni faqat default
+   branch'dagi `.github/workflows/sync-cron.yml` dan bajaradi. Default branch `main` bo'lsa:
+   ```bash
+   git checkout main && git merge --ff-only hosted && git push origin main && git checkout hosted
+   ```
+   (yoki GitHub → Settings → General → Default branch'ni `hosted` qiling).
+5. **Tekshirish:** GitHub → **Actions** → **sclass sync** → **Run workflow**. Yashil bo'lishi kerak. Render logida:
+   `sync-all accepted: started`, keyinroq `scheduled sync of all students: {'students': N, 'done': N, ...}`.
+
+Bilib qo'ying:
+- Ish muvaffaqiyatsiz bo'lsa (noto'g'ri token → 401, sozlanmagan → 503, sayt javob bermadi), workflow qizil bo'ladi va
+  GitHub xat yuboradi. Xat workflow faylidagi `cron` qatorini oxirgi o'zgartirgan foydalanuvchiga boradi.
+- GitHub band paytlarda ishni bir necha daqiqa kechiktirishi mumkin. Ochiq (public) repoda 60 kun hech qanday faollik
+  bo'lmasa, jadval o'chib qoladi: Actions sahifasida qayta yoqasiz.
+- Bepul Render sayti oxirgi so'rovdan 15 daqiqa keyin uxlaydi. Talabalar ko'p bo'lsa, uzun sinxronlash yarmida uzilishi
+  mumkin. Keyingi safar eng uzoq sinxronlanmagan talabalardan boshlanadi, shuning uchun hech kim doim oxirida qolmaydi.
+- Manzil daqiqasiga 1 marta chaqiriladi (ko'prog'i 429). Token doimiy vaqtda solishtiriladi va loglarga yozilmaydi.
+- `CRON_SECRET` ni almashtirsangiz, Render'da ham, GitHub'da ham yangilang.
+- **`render.yaml` dagi cron hozir ishlatilmaydi.** Pullik tarifga o'tsangiz, Render'da Cron Job yarating
+  (`python -m web.sync --all`, `render.yaml` dagi ta'rif bo'yicha) va `.github/workflows/sync-cron.yml` ni o'chiring.
+  Unda sinxronlash sayt ichida emas, alohida xizmatda ishlaydi va saytni sekinlashtirmaydi.
 
 ## Xavfsizlik eslatmalari
 

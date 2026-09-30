@@ -47,6 +47,9 @@ class FirstForwardedFor:
 def create_app(overrides: dict | None = None) -> Flask:
     redact.install()  # passwords, cookies and tokens never reach a log, whatever logs them
     app = Flask(__name__, static_folder=str(config.ROOT / "static"), static_url_path="/static")
+    # "web" is Flask's app logger: touching it attaches Flask's stderr handler (with a timestamp), which is what Render
+    # shows; INFO so that normal events (sign-ins, scheduled syncs) are visible, not only warnings
+    app.logger.setLevel(logging.INFO)
     app.config.update(config.from_env())
     app.config.update(overrides or {})
     if app.config["HOSTED"]:
@@ -76,8 +79,8 @@ def create_app(overrides: dict | None = None) -> Flask:
         except ValueError:
             return None
 
-    from web.views import account, ask, auth, dashboard, pages
-    for blueprint in (auth.bp, account.bp, pages.bp, dashboard.bp, ask.bp):
+    from web.views import account, ask, auth, dashboard, internal, pages
+    for blueprint in (auth.bp, account.bp, pages.bp, dashboard.bp, ask.bp, internal.bp):
         app.register_blueprint(blueprint)
 
     @app.before_request

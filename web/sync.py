@@ -344,10 +344,13 @@ def run_all(engine, sessions: sessionmaker, pause: float = PAUSE_SECONDS, sleep=
     Waits `pause` seconds between students, twice as long after each failure to reach eClass, and stops after
     MAX_OUTAGE such failures in a row (eClass is down, or it is refusing us: no point hammering it).
     """
-    with sessions() as db:
+    last_done = (select(func.max(SyncRun.finished_at)).where(
+        SyncRun.user_id == EClassCredential.user_id, SyncRun.trigger == "schedule", SyncRun.status == "done")
+        .scalar_subquery())
+    with sessions() as db:  # least recently synced first: a run cut short (the instance slept) is fair next time
         ids = db.scalars(select(EClassCredential.user_id).where(
             EClassCredential.autosync_enabled, EClassCredential.status == "active")
-            .order_by(EClassCredential.user_id)).all()
+            .order_by(last_done.asc().nulls_first(), EClassCredential.user_id)).all()
     summary = {"students": len(ids), "done": 0, "failed": 0, "busy": 0, "stopped": False}
     outage = 0
     for n, user_id in enumerate(ids):

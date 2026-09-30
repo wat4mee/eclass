@@ -1,0 +1,35 @@
+# sclass background sync on Render's free plan (which has no Cron Jobs): GitHub calls the site every 3 hours.
+# The site answers 202 at once and syncs the opted-in students in its own background worker. Setup: DEPLOY.md,
+# section 9. GitHub runs scheduled workflows only from the default branch, so this file must be there too.
+name: sclass sync
+
+on:
+  schedule:
+    - cron: "0 */3 * * *"   # every 3 hours (UTC); GitHub may start it some minutes late when busy
+  workflow_dispatch:         # by hand: Actions -> "sclass sync" -> Run workflow
+
+permissions: {}              # the job needs no access to the repository
+
+concurrency:
+  group: sclass-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Start the background sync on Render
+        env:
+          RENDER_URL: ${{ vars.RENDER_URL }}       # e.g. https://eclass-zrs8.onrender.com (repository variable)
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}  # the same value as CRON_SECRET on Render
+        run: |
+          if [ -z "$RENDER_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::Set the repository variable RENDER_URL and the secret CRON_SECRET (DEPLOY.md, section 9)"
+            exit 1
+          fi
+          # -f: any HTTP error (401, 503, ...) fails the run, and GitHub e-mails about failed scheduled runs.
+          # A sleeping free instance needs up to a minute to wake up: long timeout, retries on 502/503/504.
+          curl -sSf --max-time 150 --retry 3 --retry-delay 30 \
+            -X POST "${RENDER_URL%/}/internal/sync-all" \
+            -H "Authorization: Bearer $CRON_SECRET"

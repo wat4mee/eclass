@@ -43,6 +43,8 @@ services:
       - key: GEMINI_API_KEY
         sync: false
 
+  # Bepul tarifda ishlatilmaydi — hozir GitHub Actions orqali (.github/workflows/sync-cron.yml). Pullik tarifga
+  # o'tganda shu cron'ni yoqib, workflow faylni o'chirish mumkin.
   - type: cron
     name: sclass-sync
     runtime: python
