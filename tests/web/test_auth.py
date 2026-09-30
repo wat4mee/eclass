@@ -4,6 +4,7 @@ import logging
 import re
 
 import pytest
+from flask import request
 from sqlalchemy import select, text
 
 from web import crypto
@@ -126,6 +127,37 @@ def test_security_headers(client):
 def test_other_hosts_are_refused_but_the_health_check_answers(client):
     assert client.get("/login", headers={"Host": "evil.example"}).status_code == 400
     assert client.get("/healthz", headers={"Host": "render-internal-check"}).status_code == 200
+
+
+@pytest.fixture
+def on_render(monkeypatch, engine):
+    """The app as Render runs it: HOSTED=1, behind Render's proxies, reached as sclass.onrender.com."""
+    import web
+    from cryptography.fernet import Fernet
+    from tests.web.conftest import TEST_DATABASE_URL
+    for name, value in {"HOSTED": "1", "RENDER": "true", "RENDER_EXTERNAL_HOSTNAME": "sclass.onrender.com",
+                        "CREDENTIAL_KEY": Fernet.generate_key().decode(), "SECRET_KEY": "render-test",
+                        "DATABASE_URL": TEST_DATABASE_URL}.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("ALLOWED_HOSTS", raising=False)
+    app = web.create_app()
+    app.add_url_rule("/_whoami", "whoami", lambda: request.remote_addr)
+    yield app.test_client()
+    app.extensions["db_engine"].dispose()
+
+
+def test_on_render_the_own_hostname_is_allowed_and_nothing_else(on_render):
+    https = {"base_url": "https://sclass.onrender.com"}
+    assert on_render.get("/login", **https).status_code == 200
+    assert on_render.get("/login", base_url="https://localhost").status_code == 400
+    assert "max-age" in on_render.get("/login", **https).headers["Strict-Transport-Security"]
+
+
+def test_on_render_the_client_ip_is_the_first_forwarded_one(on_render):
+    """Render puts the student's IP first, then its proxies: rate limits must count the student, not a proxy."""
+    resp = on_render.get("/_whoami", base_url="https://sclass.onrender.com",
+                         headers={"X-Forwarded-For": "203.0.113.7, 104.16.0.1, 10.10.0.5"})
+    assert resp.get_data(as_text=True) == "203.0.113.7"
 
 
 # ---------------------------------------------------------------- sessions

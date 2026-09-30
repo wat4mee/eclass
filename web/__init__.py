@@ -30,6 +30,20 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 
        "frame-ancestors 'none'")  # style attributes only: KaTeX positions formula parts with them
 
 
+class FirstForwardedFor:
+    """Render (Cloudflare, then its load balancer) puts the student's real IP first in X-Forwarded-For and its own
+    proxies after it; ProxyFix counts from the end, so it would see a proxy. Used for the login rate limits."""
+
+    def __init__(self, app):
+        self.app = app
+
+    def __call__(self, environ, start_response):
+        first = environ.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip()
+        if first:
+            environ["REMOTE_ADDR"] = first
+        return self.app(environ, start_response)
+
+
 def create_app(overrides: dict | None = None) -> Flask:
     redact.install()  # passwords, cookies and tokens never reach a log, whatever logs them
     app = Flask(__name__, static_folder=str(config.ROOT / "static"), static_url_path="/static")
@@ -37,8 +51,11 @@ def create_app(overrides: dict | None = None) -> Flask:
     app.config.update(overrides or {})
     if app.config["HOSTED"]:
         crypto.keys()  # fail at start-up, not at the first sign-in, when CREDENTIAL_KEY is missing or malformed
-        hops = app.config["PROXY_HOPS"]
-        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=hops, x_proto=hops)  # real client IP for rate limits
+        if app.config["BEHIND_RENDER"]:  # HTTPS from Render's proxy; the client IP is the first forwarded one
+            app.wsgi_app = FirstForwardedFor(ProxyFix(app.wsgi_app, x_for=0, x_proto=1))
+        else:
+            hops = app.config["PROXY_HOPS"]
+            app.wsgi_app = ProxyFix(app.wsgi_app, x_for=hops, x_proto=hops)  # real client IP for rate limits
 
     engine = db.make_engine(app.config["DATABASE_URL"])
     app.extensions["db_engine"] = engine

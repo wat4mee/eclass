@@ -50,6 +50,14 @@ def _list(name: str, default: str) -> list[str]:
     return [item.strip().lower() for item in os.getenv(name, default).split(",") if item.strip()]
 
 
+def allowed_hosts() -> list[str]:
+    """Host names the site answers to: ALLOWED_HOSTS (e.g. a custom domain) plus, on Render, the service's own
+    onrender.com name, which Render provides as RENDER_EXTERNAL_HOSTNAME."""
+    hosts = _list("ALLOWED_HOSTS", "" if hosted() else "localhost,127.0.0.1")
+    render = os.getenv("RENDER_EXTERNAL_HOSTNAME", "").strip().lower()
+    return hosts + [render] if render and render not in hosts else hosts
+
+
 def from_env() -> dict:
     """Flask config for create_app()."""
     secure = hosted() or os.getenv("COOKIE_SECURE") == "1"  # HTTPS-only cookies; off only for local http
@@ -58,9 +66,12 @@ def from_env() -> dict:
         "SECRET_KEY": secret_key(),
         "DATABASE_URL": database_url(),
         "HOSTED": hosted(),
-        # requests with another Host header are refused (DNS rebinding); Render: add the service's domain
-        "ALLOWED_HOSTS": _list("ALLOWED_HOSTS", "localhost,127.0.0.1"),
-        "PROXY_HOPS": int(os.getenv("PROXY_HOPS", "1")),  # proxies in front of the app (Render: 1)
+        # requests with another Host header are refused (DNS rebinding, misrouted traffic)
+        "ALLOWED_HOSTS": allowed_hosts(),
+        # the client IP for rate limits: on Render (RENDER is set) the first X-Forwarded-For entry; elsewhere the
+        # entry PROXY_HOPS from the end
+        "BEHIND_RENDER": bool(os.getenv("RENDER")),
+        "PROXY_HOPS": int(os.getenv("PROXY_HOPS", "1")),
         # cookies: HTTPS only, invisible to JavaScript, not sent on cross-site requests
         "SESSION_COOKIE_NAME": "sclass_session",
         "SESSION_COOKIE_SECURE": secure, "SESSION_COOKIE_HTTPONLY": True, "SESSION_COOKIE_SAMESITE": "Lax",

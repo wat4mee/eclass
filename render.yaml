@@ -1,0 +1,62 @@
+# sclass on Render: the website and the background sync (cron). Step by step: DEPLOY.md.
+# Create it once with Dashboard > New > Blueprint (this repository, branch "hosted").
+# Secrets are `sync: false`: Render asks for their values when the Blueprint is created. It asks per service,
+# so enter the SAME DATABASE_URL, CREDENTIAL_KEY and GEMINI_API_KEY for both (env groups cannot hold them).
+
+envVarGroups:
+  - name: sclass-settings
+    envVars:
+      - key: HOSTED                 # production mode: secrets required, HTTPS-only cookies, HSTS
+        value: "1"
+      - key: APP_NAME
+        value: sclass
+      - key: CREDENTIAL_KEY_VERSION # raise by 1 when you rotate CREDENTIAL_KEY (DEPLOY.md)
+        value: "1"
+      - key: AI_PROVIDER            # Gemini only; the free quota is shared by every student
+        value: gemini:gemini-3.5-flash-lite,gemini:gemini-3.5-flash
+      - key: AI_DAILY_LIMIT         # chat questions per student per day
+        value: "30"
+      - key: STUDY_LANGUAGE         # language of the study packs
+        value: uz
+      - key: PACKS_PER_RUN          # study packs made by each background run
+        value: "6"
+
+services:
+  - type: web
+    name: sclass
+    runtime: python
+    plan: free                      # sleeps after ~15 idle minutes; 0.5c-512mb keeps it awake
+    region: frankfurt               # close to Tashkent; create the Neon database in Frankfurt too
+    branch: hosted
+    buildCommand: pip install -r requirements-web.txt
+    # migrations first (safe to repeat), then one worker: login rate limits and running syncs live in its memory
+    startCommand: alembic upgrade head && gunicorn --workers 1 --threads 8 --timeout 120 --bind 0.0.0.0:$PORT "web:create_app()"
+    healthCheckPath: /healthz
+    envVars:
+      - fromGroup: sclass-settings
+      - key: SECRET_KEY             # signs the login cookies; Render generates it
+        generateValue: true
+      - key: DATABASE_URL           # Neon connection string
+        sync: false
+      - key: CREDENTIAL_KEY         # Fernet key; generate it yourself (DEPLOY.md), never commit it
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+
+  - type: cron
+    name: sclass-sync
+    runtime: python
+    plan: 0.5c-512mb                # cron jobs are not free: at least $1 a month plus the run time
+    region: frankfurt
+    branch: hosted
+    schedule: "0 */3 * * *"         # every 3 hours (UTC)
+    buildCommand: pip install -r requirements-web.txt
+    startCommand: python -m web.sync --all
+    envVars:
+      - fromGroup: sclass-settings
+      - key: DATABASE_URL           # the same values as the web service
+        sync: false
+      - key: CREDENTIAL_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false

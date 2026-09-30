@@ -10,6 +10,8 @@ INHA University in Tashkent eClass tizimi uchun shaxsiy yordamchi. U quyidagilar
 
 > **Do'stlar uchun:** qadamma-qadam o'rnatish va foydalanish qo'llanmasi (texnik bilim talab qilinmaydi): **[QOLLANMA.md](QOLLANMA.md)**.
 > Dasturni birovga berishdan oldin uning oxiridagi "Dasturni do'stingizga berish" bo'limini o'qing: papkaning o'zini bermang, unda parolingiz bor.
+>
+> **Sayt versiyasi (sclass):** ko'p talabali sayt `web/` papkasida (`hosted` branch). Render + Neon'ga joylash: **[DEPLOY.md](DEPLOY.md)**.
 
 ## O'rnatish (yangi kompyuterda)
 
