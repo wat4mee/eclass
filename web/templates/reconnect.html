@@ -14,6 +14,10 @@
     <label>{{ t('web.login.password') }}
       <input name="password" type="password" required maxlength="256" autocomplete="current-password" autofocus>
     </label>
+    <label class="check keep">
+      <input type="checkbox" name="keep" value="y" {{ 'checked' if keep }}>
+      <span><b>{{ t('web.login.keep') }}</b><small>{{ t('web.login.keep_hint') }}</small></span>
+    </label>
     <button class="btn accent" type="submit">{{ t('web.sync.reconnect') }}<svg class="ico"><use href="#i-arrow"/></svg></button>
   </form>
   <p class="note"><svg class="ico"><use href="#i-lock"/></svg><span>{{ t('web.login.how') }}</span></p>

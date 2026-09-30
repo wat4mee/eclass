@@ -25,9 +25,56 @@ S = {
     "web.login.username": {"uz": "eClass login", "en": "eClass username", "ru": "Логин eClass"},
     "web.login.password": {"uz": "Parol", "en": "Password", "ru": "Пароль"},
     "web.login.submit": {"uz": "Kirish", "en": "Sign in", "ru": "Войти"},
-    "web.login.how": {"uz": "Parolingiz faqat eClass'ga kirishni tekshirish uchun ishlatiladi va saqlanmaydi.",
-                      "en": "Your password is only used to check your sign-in with eClass. It is not stored.",
-                      "ru": "Пароль нужен только для проверки входа в eClass и не сохраняется."},
+    "web.login.how": {"uz": "Parolingiz eClass'ga kirish uchun ishlatiladi. U faqat fonda sinxronlashni yoqsangiz, "
+                            "shifrlangan holda saqlanadi.",
+                      "en": "Your password is used to sign in to eClass. It is stored only if you turn on background "
+                            "sync, and then encrypted.",
+                      "ru": "Пароль нужен для входа в eClass. Он сохраняется только при включённой фоновой "
+                            "синхронизации, в зашифрованном виде."},
+    "web.login.keep": {"uz": "Fonda sinxronlab tur", "en": "Keep me synced in the background",
+                       "ru": "Синхронизировать в фоне"},
+    "web.login.keep_hint": {"uz": "Har 3 soatda yangilanadi, sayt yopiq bo'lsa ham. Parolingiz shifrlangan holda "
+                                  "saqlanadi; Hisob sahifasida istalgan payt o'chirasiz.",
+                            "en": "Updates every 3 hours, even when the site is closed. Your password is stored "
+                                  "encrypted; turn it off any time on the Account page.",
+                            "ru": "Обновление каждые 3 часа, даже когда сайт закрыт. Пароль хранится в "
+                                  "зашифрованном виде; отключить можно в любой момент на странице аккаунта."},
+    # background sync (account page)
+    "web.autosync.title": {"uz": "Fonda sinxronlash", "en": "Background sync", "ru": "Фоновая синхронизация"},
+    "web.autosync.state.on": {"uz": "Yoqilgan", "en": "On", "ru": "Включена"},
+    "web.autosync.state.off": {"uz": "O'chiq", "en": "Off", "ru": "Выключена"},
+    "web.autosync.state.invalid": {"uz": "To'xtatilgan", "en": "Stopped", "ru": "Остановлена"},
+    "web.autosync.on": {"uz": "{app} har 3 soatda siz uchun eClass'ni tekshiradi, sayt yopiq bo'lsa ham.",
+                        "en": "{app} checks eClass for you every 3 hours, even when the site is closed.",
+                        "ru": "{app} проверяет eClass за вас каждые 3 часа, даже когда сайт закрыт."},
+    "web.autosync.last": {"uz": "Oxirgi fon sinxronlash: {when}", "en": "Last background sync: {when}",
+                          "ru": "Последняя фоновая синхронизация: {when}"},
+    "web.autosync.off": {"uz": "Ma'lumotlaringiz faqat saytga kirganingizda yoki yangilash tugmasini bosganingizda "
+                               "yangilanadi.",
+                         "en": "Your data updates only when you sign in or press the refresh button.",
+                         "ru": "Данные обновляются только при входе или по кнопке обновления."},
+    "web.autosync.explain": {"uz": "Yoqish uchun eClass parolingiz kerak. U shifrlangan holda saqlanadi va faqat "
+                                   "eClass'ga kirish paytida ochiladi. O'chirsangiz, darhol o'chiriladi.",
+                             "en": "Turning it on needs your eClass password. It is stored encrypted and decrypted "
+                                   "only at the moment of signing in to eClass. Turning it off deletes it at once.",
+                             "ru": "Для включения нужен пароль от eClass. Он хранится в зашифрованном виде и "
+                                   "расшифровывается только в момент входа в eClass. При выключении сразу удаляется."},
+    "web.autosync.enable": {"uz": "Yoqish", "en": "Turn on", "ru": "Включить"},
+    "web.autosync.disable": {"uz": "To'xtatish va parolni o'chirish", "en": "Turn off and delete my password",
+                             "ru": "Выключить и удалить пароль"},
+    "web.autosync.invalid": {"uz": "eClass saqlangan parolingizni qabul qilmadi (o'zgartirgan bo'lsangiz kerak). Fonda "
+                                   "sinxronlash to'xtatildi va parol o'chirildi. Davom ettirish uchun yangi parolni "
+                                   "kiriting.",
+                             "en": "eClass no longer accepts your stored password (did you change it?). Background "
+                                   "sync stopped and the password was deleted. Enter your new password to continue.",
+                             "ru": "eClass больше не принимает сохранённый пароль (возможно, вы его сменили). Фоновая "
+                                   "синхронизация остановлена, пароль удалён. Введите новый пароль, чтобы "
+                                   "продолжить."},
+    "web.autosync.turned_on": {"uz": "Fonda sinxronlash yoqildi.", "en": "Background sync is on.",
+                               "ru": "Фоновая синхронизация включена."},
+    "web.autosync.turned_off": {"uz": "Fonda sinxronlash o'chirildi, parolingiz o'chirildi.",
+                                "en": "Background sync is off and your password is deleted.",
+                                "ru": "Фоновая синхронизация выключена, пароль удалён."},
     "web.login.failed": {"uz": "Kirib bo'lmadi. eClass login va parolingizni tekshiring.",
                          "en": "Sign-in failed. Check your eClass username and password.",
                          "ru": "Не удалось войти. Проверьте логин и пароль от eClass."},
@@ -66,11 +113,12 @@ S = {
                            "ru": "Что мы храним о вас"},
     "web.account.stored_text": {
         "uz": "eClass loginingiz, kurslaringiz ro'yxati, topshiriqlar muddatlari va baholaringiz, o'rganilgan deb "
-              "belgilagan materiallaringiz va sinxronlash tarixi. Parolingiz saqlanmaydi.",
+              "belgilagan materiallaringiz va sinxronlash tarixi. Parolingiz faqat fonda sinxronlash yoqilganda, "
+              "shifrlangan holda saqlanadi.",
         "en": "Your eClass username, your course list, assignment deadlines and grades, the materials you marked as "
-              "studied, and your sync history. Your password is not stored.",
+              "studied, and your sync history. Your password is stored only while background sync is on, encrypted.",
         "ru": "Ваш логин eClass, список курсов, сроки заданий и оценки, отметки об изученных материалах и история "
-              "синхронизации. Пароль не хранится."},
+              "синхронизации. Пароль хранится только при включённой фоновой синхронизации, в зашифрованном виде."},
     "web.delete.title": {"uz": "Ulanishni uzish va ma'lumotlarimni o'chirish", "en": "Disconnect & delete my data",
                          "ru": "Отключить и удалить мои данные"},
     "web.delete.text": {
@@ -106,12 +154,22 @@ S = {
               "он входит в eClass от вашего имени. Ниже всё описано простыми словами."},
     "web.privacy.password.h": {"uz": "Parolingiz", "en": "Your password", "ru": "Ваш пароль"},
     "web.privacy.password": {
-        "uz": "Kirishda parolingiz to'g'riligini tekshirish uchun bir marta eClass'ga yuboriladi. Shundan keyin u "
-              "hech qayerda saqlanmaydi, loglarga ham yozilmaydi.",
-        "en": "When you sign in, your password is sent once to eClass to check it. After that it is not kept "
-              "anywhere, not even in logs.",
-        "ru": "При входе пароль один раз отправляется в eClass для проверки. После этого он нигде не хранится, "
-              "даже в логах."},
+        "uz": "Kirishda parolingiz to'g'riligini tekshirish uchun eClass'ga yuboriladi. Odatda u shundan keyin hech "
+              "qayerda saqlanmaydi. Faqat \"Fonda sinxronlab tur\" belgisini o'zingiz qo'ysangiz, parol shifrlangan "
+              "holda saqlanadi, shunda sayt har 3 soatda siz uchun eClass'ga kira oladi. U faqat shu kirish paytida "
+              "ochiladi, hech qachon ko'rsatilmaydi va loglarga yozilmaydi. Hisob sahifasida fonda sinxronlashni "
+              "o'chirsangiz yoki eClass uni qabul qilmay qo'ysa (masalan, parolni o'zgartirsangiz), u darhol "
+              "o'chiriladi.",
+        "en": "When you sign in, your password is sent to eClass to check it. By default it is then not kept "
+              "anywhere. Only if you tick \"Keep me synced in the background\" is it stored, encrypted, so the site "
+              "can sign in to eClass for you every 3 hours. It is decrypted only at that moment, never shown, and "
+              "never written to logs. It is deleted at once when you turn background sync off on the Account page, "
+              "or when eClass stops accepting it (for example, after you change your password).",
+        "ru": "При входе пароль отправляется в eClass для проверки. По умолчанию после этого он нигде не хранится. "
+              "Только если вы сами отметите «Синхронизировать в фоне», он сохраняется в зашифрованном виде, чтобы "
+              "сайт мог входить в eClass за вас каждые 3 часа. Расшифровывается он только в этот момент, никогда "
+              "не показывается и не пишется в логи. Он сразу удаляется, если выключить фоновую синхронизацию на "
+              "странице аккаунта или если eClass перестанет его принимать (например, после смены пароля)."},
     "web.privacy.session.h": {"uz": "eClass sessiyasi", "en": "Your eClass session", "ru": "Сессия eClass"},
     "web.privacy.session": {
         "uz": "Kirgandan keyin eClass bergan sessiya kaliti (cookie) shifrlangan holda ko'pi bilan 2 soat saqlanadi: "
@@ -137,26 +195,34 @@ S = {
               "хранятся: при открытии они загружаются из eClass для вас."},
     "web.privacy.protect.h": {"uz": "Qanday himoyalanadi", "en": "How it is protected", "ru": "Как это защищено"},
     "web.privacy.protect": {
-        "uz": "Saqlanadigan maxfiy qiymatlar (eClass sessiyasi) Fernet (AES) bilan shifrlanadi. Shifr kaliti faqat "
+        "uz": "Saqlanadigan maxfiy qiymatlar (eClass sessiyasi va, yoqsangiz, parolingiz) Fernet (AES) bilan "
+              "shifrlanadi. Shifr kaliti faqat "
               "server sozlamalarida turadi: bazada ham, kodda ham yo'q. Sayt faqat HTTPS orqali ishlaydi, kirish "
               "urinishlari cheklangan, loglarda parol va cookie'lar yashiriladi.",
-        "en": "Stored secrets (your eClass session) are encrypted with Fernet (AES). The encryption key lives only in "
+        "en": "Stored secrets (your eClass session and, if you turn on background sync, your password) are encrypted "
+              "with Fernet (AES). The encryption key lives only in "
               "the server settings, never in the database or the code. The site only works over HTTPS, sign-in "
               "attempts are rate-limited, and passwords and cookies are masked in logs.",
-        "ru": "Хранимые секреты (сессия eClass) зашифрованы Fernet (AES). Ключ шифрования есть только в настройках "
+        "ru": "Хранимые секреты (сессия eClass и, при фоновой синхронизации, пароль) зашифрованы Fernet (AES). Ключ "
+              "шифрования есть только в настройках "
               "сервера — ни в базе данных, ни в коде. Сайт работает только по HTTPS, число попыток входа "
               "ограничено, пароли и cookie в логах скрываются."},
     "web.privacy.ai.h": {"uz": "AI yordamchi", "en": "The AI assistant", "ru": "ИИ-помощник"},
     "web.privacy.ai": {
         "uz": "AI yordamchiga bergan savollaringiz va kurs materiallaridan olingan parchalar javob yozish uchun "
               "Google Gemini'ga yuboriladi. Gemini API'ning bepul tarifida Google bu ma'lumotlardan o'z "
-              "mahsulotlarini yaxshilash uchun foydalanishi mumkin, shuning uchun chatga shaxsiy ma'lumot yozmang.",
+              "mahsulotlarini yaxshilash uchun foydalanishi mumkin, shuning uchun chatga shaxsiy ma'lumot yozmang. "
+              "O'quv to'plamlari (xulosa, kartochkalar, test) ham kurs materiallari matnidan Gemini yordamida "
+              "tayyorlanadi; ularga shaxsiy ma'lumot yuborilmaydi.",
         "en": "Questions you ask the AI assistant, together with passages from your course materials, are sent to "
               "Google Gemini to write the answer. On the free tier of the Gemini API, Google may use this data to "
-              "improve its products, so do not type personal information into the chat.",
+              "improve its products, so do not type personal information into the chat. Study packs (summary, "
+              "flashcards, quiz) are also made by Gemini from the text of course materials; no personal data is sent "
+              "for them.",
         "ru": "Вопросы к ИИ-помощнику вместе с отрывками из материалов курса отправляются в Google Gemini для "
               "ответа. На бесплатном тарифе Gemini API Google может использовать эти данные для улучшения своих "
-              "продуктов, поэтому не пишите в чат личную информацию."},
+              "продуктов, поэтому не пишите в чат личную информацию. Учебные наборы (конспект, карточки, тест) тоже "
+              "создаются Gemini из текста материалов курса; личные данные для них не отправляются."},
     "web.privacy.who.h": {"uz": "Kim ko'radi", "en": "Who can see it", "ru": "Кто это видит"},
     "web.privacy.who": {
         "uz": "Shaxsiy ma'lumotlaringizni (baholar, topshiriqlar, sinxronlash tarixi) faqat siz ko'rasiz. Kurs "

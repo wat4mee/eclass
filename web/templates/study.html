@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}{{ activity.name }} · {{ t('study.suffix') }} · {{ app_name }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='katex/katex.min.css') }}">{% endblock %}
+{% block content %}
+<section class="study-hero reveal" style="--c: {{ course_color(course.id) }}">
+  <a class="back" href="{{ url_for('dashboard.course', course_id=course.id) }}"><svg class="ico"><use href="#i-back"/></svg>{{ course.name }}</a>
+  <h1 class="display">{{ activity.name }}</h1>
+  <div class="hero-meta">
+    <a class="chip" href="{{ url_for('dashboard.file', material_id=material.id) }}" target="_blank" rel="noopener"><span class="ext ext-{{ material.filename | ext }}" style="width: auto; padding: 3px 6px">{{ material.filename | ext }}</span>{{ material.filename }}</a>
+    <span class="chip"><svg class="ico" style="width: 14px; height: 14px"><use href="#i-sparkles"/></svg>{{ pack.model }}</span>
+    <button class="chip studied-btn {{ 'on' if studied }}" type="button" data-url="{{ url_for('dashboard.studied', material_id=material.id) }}"><svg class="ico"><use href="#i-check"/></svg><span>{{ js_t.studied_done if studied else js_t.studied_mark }}</span></button>
+  </div>
+</section>
+
+<div class="seg-wrap reveal">
+  <div class="segs" role="tablist">
+    <span class="seg-ind"></span>
+    <button class="seg on" type="button" data-tab="summary"><svg class="ico"><use href="#i-book"/></svg>{{ t('study.tab.summary') }}</button>
+    <button class="seg" type="button" data-tab="cards"><svg class="ico"><use href="#i-layers"/></svg>{{ t('study.tab.cards') }}<span class="cnt">{{ pack.flashcards | length }}</span></button>
+    <button class="seg" type="button" data-tab="quiz"><svg class="ico"><use href="#i-target"/></svg>{{ t('study.tab.quiz') }}<span class="cnt">{{ pack.quiz | length }}</span></button>
+  </div>
+</div>
+
+<section class="panel on" id="p-summary">
+  <div class="two">
+    <article class="card summary reveal" id="summary">
+      <div class="card-title"><h2><svg class="ico"><use href="#i-book"/></svg>{{ t('study.summary') }}</h2></div>
+      {% for para in pack.summary.split("\n") if para.strip() %}<p>{{ para }}</p>{% endfor %}
+    </article>
+    <div class="concepts">
+      {% for c in pack.concepts %}
+      <div class="card lift concept reveal"><b>{{ c.term }}</b><p>{{ c.explanation }}</p></div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="panel" id="p-cards">
+  <div class="deck" id="deck" tabindex="-1">
+    <div class="deck-stage" id="stage">
+      {% for c in pack.flashcards %}
+      <button class="fcard {{ 'active' if loop.first }}" type="button" aria-label="{{ t('study.flip_hint') }}">
+        <span class="fcard-inner">
+          <span class="face face-front">
+            <span class="eyebrow">{{ t('study.question_n', n=loop.index) }}</span>
+            <span class="fc-text">{{ c.front }}</span>
+            <span class="hint"><svg class="ico"><use href="#i-flip"/></svg>{{ t('study.flip_hint') }}</span>
+          </span>
+          <span class="face face-back">
+            <span class="eyebrow">{{ t('study.answer') }}</span>
+            <span class="fc-text">{{ c.back }}</span>
+          </span>
+        </span>
+      </button>
+      {% endfor %}
+    </div>
+    <div class="deck-controls">
+      <button class="icon-btn" type="button" id="prev" aria-label="{{ t('study.prev') }}"><svg class="ico"><use href="#i-left"/></svg></button>
+      <span class="deck-count num"><b id="cur">1</b> / {{ pack.flashcards | length }}</span>
+      <button class="icon-btn" type="button" id="next" aria-label="{{ t('study.next') }}"><svg class="ico"><use href="#i-right"/></svg></button>
+    </div>
+    <div class="progress"><span id="deckbar"></span></div>
+    <p class="keys">{{ t('study.keys') | safe }}</p>
+  </div>
+</section>
+
+<section class="panel" id="p-quiz">
+  <div class="card quiz" id="quiz">
+    <div class="quiz-top"><span class="eyebrow" id="qlabel"></span><span class="chip num" id="qscore"></span></div>
+    <div class="progress"><span id="qbar"></span></div>
+    {% for q in pack.quiz %}
+    <div class="qcard {{ 'active' if loop.first }}" data-answer="{{ q.answer_index }}">
+      <h3 class="q-text">{{ q.question }}</h3>
+      <div class="options">
+        {% for opt in q.options %}
+        <button class="opt" type="button" data-i="{{ loop.index0 }}">
+          <span class="key">{{ "ABCD"[loop.index0] }}</span><span class="opt-text">{{ opt }}</span>
+          <svg class="ico mark"><use href="#i-check"/></svg>
+        </button>
+        {% endfor %}
+      </div>
+      <div class="explain"><div><div class="inner"><svg class="ico"><use href="#i-sparkles"/></svg><span>{{ q.explanation }}</span></div></div></div>
+    </div>
+    {% endfor %}
+    <div class="q-actions" id="qactions"><button class="btn accent" type="button" id="qnext" disabled>{{ t('study.next_question') }}<svg class="ico"><use href="#i-arrow"/></svg></button></div>
+    <div class="qresult" id="qresult">
+      <div class="score-ring">
+        <svg viewBox="0 0 130 130" aria-hidden="true">
+          <defs><linearGradient id="score-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbbf24"/><stop offset="1" stop-color="#2dd4bf"/></linearGradient></defs>
+          <circle class="bg" cx="65" cy="65" r="54"/><circle class="val" id="rring" cx="65" cy="65" r="54"/>
+        </svg>
+        <div class="score-num"><span><span id="rnum">0</span><small>/{{ pack.quiz | length }}</small></span></div>
+      </div>
+      <p class="result-msg" id="rmsg"></p>
+      <button class="btn primary" type="button" id="qrestart"><svg class="ico"><use href="#i-flip"/></svg>{{ t('study.restart') }}</button>
+    </div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='katex/katex.min.js') }}" defer></script>
+<script src="{{ url_for('static', filename='katex/auto-render.min.js') }}" defer></script>
+<script src="{{ url_for('static', filename='web/study.js') }}" defer></script>
+{% endblock %}

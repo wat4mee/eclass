@@ -67,3 +67,34 @@ def decrypt(token: str, key_version: int) -> str:
         return fernet.decrypt(token.encode()).decode()
     except InvalidToken:
         raise CredentialKeyError(f"stored secret does not match key version {key_version}") from None
+
+
+def rotate(db) -> dict:
+    """Re-encrypt every stored secret under the current key (`flask --app web rotate-credentials`).
+
+    Run it after setting the new CREDENTIAL_KEY with CREDENTIAL_KEY_VERSION + 1 and the old key as
+    CREDENTIAL_KEY_PREVIOUS; afterwards CREDENTIAL_KEY_PREVIOUS can be removed. A secret no key can decrypt is
+    dropped: a password is forgotten (background sync stops until the student enters it again), a session ends.
+    The values are only re-encrypted here, never used.
+    """
+    from sqlalchemy import select
+
+    from web.models import EClassCredential, EClassSession
+    version, _ = keys()
+    stats = {"passwords": 0, "sessions": 0, "dropped": 0}
+    for row in db.scalars(select(EClassCredential).where(EClassCredential.key_version != version)):
+        try:
+            row.encrypted_password, row.key_version = encrypt(decrypt(row.encrypted_password, row.key_version))
+            stats["passwords"] += 1
+        except CredentialKeyError:
+            row.encrypted_password = row.key_version = None
+            row.autosync_enabled, row.status = False, "invalid"
+            stats["dropped"] += 1
+    for row in db.scalars(select(EClassSession).where(EClassSession.key_version != version)):
+        try:
+            row.encrypted_cookie, row.key_version = encrypt(decrypt(row.encrypted_cookie, row.key_version))
+            stats["sessions"] += 1
+        except CredentialKeyError:
+            db.delete(row)
+            stats["dropped"] += 1
+    return stats

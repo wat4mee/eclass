@@ -89,6 +89,8 @@ class FakeSite:
             resp = FakeResponse(BASE + path, redirect_to=YOUTUBE)
         elif path == "/mod/ubfile/view.php?id=701":
             resp = FakeResponse(BASE + "/pluginfile.php/1/mod_ubfile/content/0/lecture3.pdf", LECTURE, "application/pdf")
+        elif path.endswith("/lecture3.pdf"):  # opened again later through its file link
+            resp = FakeResponse(BASE + path, LECTURE, "application/pdf")
         elif path.endswith("/hw1.pdf"):
             resp = FakeResponse(BASE + path, HOMEWORK, "application/pdf")
         elif path.endswith("/data%20set.xlsx"):

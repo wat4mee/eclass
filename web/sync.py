@@ -4,10 +4,14 @@ Reuses the Mac version's page parsers (eclass/courses.py, activities.py, files.p
 course; deadlines, submission status and grades are the student's own. Files are downloaded into memory only to
 read their text (for search and the AI chat), then dropped; students open files through /file/<id>.
 
-    python -m web.sync --all      # background sync of students who opted in (milestone 4)
+    python -m web.sync --all              # scheduled: every student who opted into background sync, then packs
+    python -m web.sync --packs 10         # only generate up to 10 study packs (web/packs.py)
 """
+import argparse
 import hashlib
 import logging
+import sys
+import time
 from datetime import datetime, timedelta, timezone
 from urllib.parse import unquote, urlparse
 
@@ -16,14 +20,16 @@ from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from eclass.activities import parse_activity, parse_assign, pluginfile_links, resolve_url
-from eclass.auth import EClassClient, EClassError, NetworkError, PageError, ServerError, SessionExpired
+from eclass.auth import (EClassClient, EClassError, LoginError, NetworkError, PageError, ServerError,
+                         SessionExpired)
 from eclass.config import ECLASS_URL, env_int
 from eclass.courses import list_courses, parse_course_page
 from eclass.extract import extract_bytes, method_for
 from eclass.files import filename_from_response
 from eclass.notify import parse_due
-from web import eclass_login
-from web.models import Activity, Course, Enrollment, Material, MaterialPage, Section, SyncRun, UserAssignment
+from web import autosync, crypto, eclass_login
+from web.models import (Activity, Course, EClassCredential, Enrollment, Material, MaterialPage, Section, SyncRun,
+                        User, UserAssignment)
 from web.redact import redact
 
 log = logging.getLogger("web.sync")
@@ -31,6 +37,10 @@ MAX_FILE_BYTES = env_int("SYNC_MAX_FILE_MB", 30) * 1024 * 1024  # bigger files (
 LOCK_NAMESPACE = 7141  # pg advisory lock (namespace, user_id): one sync per student at a time
 STALE_RUN = timedelta(minutes=30)  # a "running" sync older than this died without finishing
 ECLASS_HOST = urlparse(ECLASS_URL).netloc
+SESSION_MINUTES = env_int("ECLASS_SESSION_MINUTES", 120)
+PAUSE_SECONDS = env_int("SYNC_PAUSE_SECONDS", 20)  # between two students in a scheduled run: be polite to eClass
+MAX_OUTAGE = 3  # a scheduled run stops after this many students in a row could not reach eClass
+OUTAGE_CODES = ("network", "timeout", "server")
 
 
 class SyncStats:
@@ -218,6 +228,53 @@ def sync_user(engine, sessions: sessionmaker, user_id: int, trigger: str, client
             lock.execute(text("SELECT pg_advisory_unlock(:ns, :uid)"), args)
 
 
+def _password_login(db: Session, user_id: int, keep_session: bool):
+    """Log in with the student's stored password: the only place it is ever decrypted, right before use."""
+    cred = db.get(EClassCredential, user_id)
+    username = db.scalar(select(User.eclass_username).where(User.id == user_id))
+    try:
+        password = crypto.decrypt(cred.encrypted_password, cred.key_version)
+    except crypto.CredentialKeyError:  # the key it was encrypted with is gone: the student has to enter it again
+        autosync.disable(db, user_id, status="invalid")
+        db.commit()
+        raise SessionExpired("stored password cannot be decrypted") from None
+    client = EClassClient(username=username, password=password)
+    del password
+    try:
+        client.login()
+    except SessionExpired:
+        raise
+    except LoginError:  # eClass refused it (changed password): stop at once, repeated tries could lock the account
+        autosync.disable(db, user_id, status="invalid")
+        db.commit()
+        raise
+    finally:
+        client.forget_password()
+    cred.last_verified_at = _now()
+    if keep_session:  # the student is using the site: files open without asking for the password again
+        eclass_login.save_session(db, user_id, client.export_cookies(), SESSION_MINUTES)
+    db.commit()
+    return client
+
+
+def renew_session(db: Session, user_id: int):
+    """A fresh eClass session (client) from the stored password of a student who opted in, so opening a file
+    after the saved session ended does not ask for the password again. Raises LoginError when eClass refuses it."""
+    return _password_login(db, user_id, keep_session=True)
+
+
+def _client(db: Session, user_id: int, trigger: str):
+    """An eClass client for this run: the student's live session, else their stored password (if they opted in)."""
+    if trigger != "schedule":
+        cookies = eclass_login.load_session(db, user_id)
+        db.commit()
+        if cookies is not None:
+            return EClassClient(cookies=cookies)
+    if autosync.state(db, user_id) == "on":
+        return _password_login(db, user_id, keep_session=trigger != "schedule")
+    raise SessionExpired("no live eClass session")
+
+
 def _run(sessions: sessionmaker, user_id: int, trigger: str, client) -> SyncRun:
     stats = SyncStats()
     with sessions() as db:
@@ -226,11 +283,7 @@ def _run(sessions: sessionmaker, user_id: int, trigger: str, client) -> SyncRun:
         db.commit()
         try:
             if client is None:
-                cookies = eclass_login.load_session(db, user_id)
-                db.commit()
-                if cookies is None:
-                    raise SessionExpired("no live eClass session")
-                client = EClassClient(cookies=cookies)
+                client = _client(db, user_id, trigger)
             _sync(db, client, user_id, stats)
             run.status = "done"
         except EClassError as exc:
@@ -257,3 +310,66 @@ def latest_run(db: Session, user_id: int) -> SyncRun | None:
 def is_running(db: Session, user_id: int) -> bool:
     return bool(db.scalar(select(func.count()).select_from(SyncRun).where(
         SyncRun.user_id == user_id, SyncRun.status == "running", SyncRun.started_at > _now() - STALE_RUN)))
+
+
+# ---------------------------------------------------------------- scheduled runs (cron)
+
+def run_all(engine, sessions: sessionmaker, pause: float = PAUSE_SECONDS, sleep=time.sleep) -> dict:
+    """Sync every student who opted into background sync, one at a time.
+
+    Waits `pause` seconds between students, twice as long after each failure to reach eClass, and stops after
+    MAX_OUTAGE such failures in a row (eClass is down, or it is refusing us: no point hammering it).
+    """
+    with sessions() as db:
+        ids = db.scalars(select(EClassCredential.user_id).where(
+            EClassCredential.autosync_enabled, EClassCredential.status == "active")
+            .order_by(EClassCredential.user_id)).all()
+    summary = {"students": len(ids), "done": 0, "failed": 0, "busy": 0, "stopped": False}
+    outage = 0
+    for n, user_id in enumerate(ids):
+        if n:
+            sleep(pause * 2 ** outage)
+        run = sync_user(engine, sessions, user_id, "schedule")
+        if run is None:  # the student is syncing right now from the website
+            summary["busy"] += 1
+            continue
+        if run.status == "done":
+            summary["done"] += 1
+            outage = 0
+            continue
+        summary["failed"] += 1
+        outage = outage + 1 if run.error_code in OUTAGE_CODES else 0
+        if outage >= MAX_OUTAGE:
+            summary["stopped"] = True
+            log.warning("eClass unreachable for %d students in a row: stopping this run", outage)
+            break
+    return summary
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(prog="python -m web.sync", description=__doc__.split("\n")[0])
+    parser.add_argument("--all", action="store_true", help="sync every student who opted into background sync")
+    parser.add_argument("--packs", type=int, default=env_int("PACKS_PER_RUN", 6),
+                        help="study packs to generate after the sync (0 = none; default PACKS_PER_RUN or 6)")
+    args = parser.parse_args(argv)
+    if not args.all and not args.packs:
+        parser.error("nothing to do: pass --all and/or --packs N")
+
+    from web import config, db, packs, redact as redaction
+    redaction.install()
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+                        stream=sys.stdout)
+    engine = db.make_engine(config.database_url())
+    sessions = db.make_session_factory(engine)
+    try:
+        if args.all:
+            log.info("scheduled sync: %s", run_all(engine, sessions))
+        if args.packs:
+            log.info("study packs: %s", packs.generate_pending(sessions, packs.provider(), args.packs))
+    finally:
+        engine.dispose()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

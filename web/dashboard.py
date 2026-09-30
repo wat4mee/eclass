@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from eclass import i18n as base_i18n
 from eclass.grades import grade_percent, grade_points
 from eclass.notify import is_submitted
-from web.models import Activity, Course, Enrollment, Material, Section, UserAssignment
+from web.models import Activity, Course, Enrollment, Material, Section, StudyPack, UserAssignment
 
 TZ = ZoneInfo("Asia/Tashkent")  # the students' time zone: shown dates, the greeting, "this week"
 SOON = timedelta(hours=48)  # an unsubmitted assignment due within this is "soon"
@@ -31,9 +31,14 @@ def courses(db: Session, user_id: int) -> list[dict]:
                    .where(Activity.course_id == Course.id).scalar_subquery())
     n_assign = (select(func.count(Activity.id)).where(Activity.course_id == Course.id, Activity.type == "assign")
                 .scalar_subquery())
-    rows = db.execute(select(Course, n_materials, n_assign).join(Enrollment, _mine(user_id)).order_by(Course.name))
-    return [{"id": c.id, "name": c.name, "professor": c.professor, "n_materials": m, "n_assign": a}
-            for c, m, a in rows]
+    n_packs = (select(func.count(func.distinct(StudyPack.material_id)))
+               .join(Material, (Material.id == StudyPack.material_id) & (Material.sha256 == StudyPack.sha256))
+               .join(Activity, Activity.id == Material.activity_id).where(Activity.course_id == Course.id)
+               .scalar_subquery())
+    rows = db.execute(select(Course, n_materials, n_assign, n_packs).join(Enrollment, _mine(user_id))
+                      .order_by(Course.name))
+    return [{"id": c.id, "name": c.name, "professor": c.professor, "n_materials": m, "n_assign": a, "n_packs": p}
+            for c, m, a, p in rows]
 
 
 def colors(db: Session, user_id: int) -> dict[int, str]:
@@ -133,7 +138,8 @@ def average(items: list[dict]) -> int | None:
 
 def home_stats(items: list[dict], course_list: list[dict]) -> dict:
     return {"pending": sum(d["state"] != "done" for d in items), "avg": average(items),
-            "materials": sum(c["n_materials"] for c in course_list), "courses": len(course_list)}
+            "materials": sum(c["n_materials"] for c in course_list), "courses": len(course_list),
+            "packs": sum(c["n_packs"] for c in course_list)}
 
 
 def grade_summary(items: list[dict]) -> dict:

@@ -26,6 +26,32 @@
   </dl>
 </section>
 
+<section class="card autosync-card reveal" id="autosync">
+  <div class="card-title">
+    <h2><svg class="ico"><use href="#i-flip"/></svg>{{ t('web.autosync.title') }}</h2>
+    <span class="badge as-{{ autosync }}">{{ t('web.autosync.state.' ~ autosync) }}</span>
+  </div>
+  {% if autosync == 'on' %}
+  <p class="muted">{{ t('web.autosync.on', app=app_name) }}</p>
+  {% if last_background %}<p class="muted small">{{ t('web.autosync.last', when=last_background | dt) }}</p>{% endif %}
+  <form method="post" action="{{ url_for('account.autosync_off') }}" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn small" type="submit"><svg class="ico"><use href="#i-x"/></svg>{{ t('web.autosync.disable') }}</button>
+  </form>
+  {% else %}
+  <p class="muted">{{ t('web.autosync.invalid') if autosync == 'invalid' else t('web.autosync.off') }}</p>
+  <p class="muted small">{{ t('web.autosync.explain') }}</p>
+  {% if sync_error %}<div class="flash flash-error" role="alert">{{ sync_error }}</div>{% endif %}
+  <form method="post" action="{{ url_for('account.autosync_on') }}" class="form inline-form">
+    {{ sync_form.csrf_token }}
+    <label>{{ t('web.login.password') }}
+      <input name="password" type="password" required maxlength="256" autocomplete="current-password">
+    </label>
+    <button class="btn accent" type="submit">{{ t('web.autosync.enable') }}</button>
+  </form>
+  {% endif %}
+</section>
+
 <section class="card reveal">
   <div class="card-title"><h2><svg class="ico"><use href="#i-shield"/></svg>{{ t('web.account.stored') }}</h2></div>
   <p class="muted">{{ t('web.account.stored_text') }} <a class="link" href="{{ url_for('pages.privacy') }}">{{ t('web.nav.privacy') }}</a></p>

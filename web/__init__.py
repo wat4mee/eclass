@@ -149,6 +149,15 @@ def create_app(overrides: dict | None = None) -> Flask:
         log.error("server error on %s", request.path, exc_info=getattr(exc, "original_exception", exc))
         return error_page(500, "err.500.title", "web.err.500.text")
 
+    @app.cli.command("rotate-credentials")
+    def rotate_credentials():
+        """Re-encrypt stored eClass passwords and sessions with the current CREDENTIAL_KEY."""
+        with app.extensions["db_sessions"]() as session:
+            stats = crypto.rotate(session)
+            session.commit()
+        print(f"re-encrypted {stats['passwords']} password(s) and {stats['sessions']} session(s); "
+              f"dropped {stats['dropped']} that no key could decrypt")
+
     @app.get("/healthz")
     @limiter.exempt
     def healthz():

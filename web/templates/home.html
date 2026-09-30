@@ -3,6 +3,13 @@
                       "nodate": "var(--idle)", "done": "var(--ok)"} %}
 {% set C = 376.99 %}
 {% block content %}
+{% if autosync == 'invalid' and status.state != 'expired' %}
+<div class="sync-alert" role="alert">
+  <span class="sa-ico"><svg class="ico"><use href="#i-x"/></svg></span>
+  <div>{{ t('web.autosync.invalid') }}</div>
+  <a class="btn small" href="{{ url_for('account.account') }}#autosync">{{ t('web.autosync.enable') }}</a>
+</div>
+{% endif %}
 {% if status.state in ('error', 'expired') %}
 <div class="sync-alert" role="alert">
   <span class="sa-ico"><svg class="ico"><use href="#i-x"/></svg></span>
@@ -78,8 +85,8 @@
     <div><div class="stat-num num" data-count="{{ stats.materials }}">{{ stats.materials }}</div><div class="stat-label">{{ t('stat.materials') }}</div></div>
   </div>
   <div class="card stat reveal" style="--sc: var(--accent)">
-    <span class="stat-ico"><svg class="ico lg"><use href="#i-book"/></svg></span>
-    <div><div class="stat-num num" data-count="{{ stats.courses }}">{{ stats.courses }}</div><div class="stat-label">{{ t('home.courses') }}</div></div>
+    <span class="stat-ico"><svg class="ico lg"><use href="#i-sparkles"/></svg></span>
+    <div><div class="stat-num num" data-count="{{ stats.packs }}">{{ stats.packs }}</div><div class="stat-label">{{ t('stat.packs') }}</div></div>
   </div>
 </section>
 
@@ -126,6 +133,7 @@
         <a href="{{ url_for('dashboard.file', material_id=m.id) }}" target="_blank" rel="noopener" title="{{ m.filename }}">{{ m.activity or m.filename }}</a>
         <div class="meta"><span class="dot"></span>{{ m.course }}</div>
       </div>
+      {% if m.id in ready %}<a class="study-chip" href="{{ url_for('dashboard.study', material_id=m.id) }}"><svg class="ico"><use href="#i-sparkles"/></svg>{{ t('study.open') }}</a>{% endif %}
     </div>
     {% else %}
     <div class="empty-state"><svg class="ico"><use href="#i-file"/></svg>{{ t('web.home.empty') }}</div>
@@ -144,8 +152,10 @@
     <span class="muted small">{{ c.professor or "" }}</span>
     <div class="cc-stats">
       <span><b class="num">{{ c.n_materials }}</b> {{ pl(c.n_materials, 'material') }}</span>
+      <span><b class="num">{{ c.n_packs }}</b> {{ pl(c.n_packs, 'pack') }}</span>
       <span><b class="num">{{ c.n_assign }}</b> {{ pl(c.n_assign, 'assignment') }}</span>
     </div>
+    <div class="bar-track" title="{{ t('home.study_ready') }}"><span style="--w: {{ (100 * c.n_packs / c.n_materials) | round | int if c.n_materials else 0 }}%"></span></div>
   </a>
   {% else %}
   <p class="muted">{{ t('web.home.empty') }}</p>

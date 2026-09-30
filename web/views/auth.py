@@ -5,11 +5,11 @@ from flask import Blueprint, current_app, flash, redirect, render_template, requ
 from flask_limiter.util import get_remote_address
 from flask_login import current_user, login_required, login_user, logout_user
 from flask_wtf import FlaskForm
-from wtforms import PasswordField, StringField
+from wtforms import BooleanField, PasswordField, StringField
 from wtforms.validators import InputRequired, Length
 
+from web import autosync, eclass_login, tasks, users
 from web import db as database
-from web import eclass_login, tasks, users
 from web.extensions import limiter
 from web.views import T
 
@@ -23,6 +23,14 @@ MESSAGES = {"credentials": ("web.login.failed", 401), "unreachable": ("web.login
 class LoginForm(FlaskForm):
     username = StringField(validators=[InputRequired(), Length(max=100)])
     password = PasswordField(validators=[InputRequired(), Length(max=256)])
+    keep = BooleanField()  # "keep me synced in the background": off unless the student ticks it
+
+
+def _remember_password(db, user_id: int, password: str, ticked: bool) -> None:
+    """Store the (just verified) password when the student ticked the box. If background sync is already on,
+    the stored copy is replaced by this current password, so a password changed on eClass keeps working."""
+    if ticked or autosync.state(db, user_id) == "on":
+        autosync.enable(db, user_id, password)
 
 
 def _username_key() -> str:
@@ -51,6 +59,7 @@ def login():
                 db = database.session()
                 user = users.signed_in(db, username)
                 eclass_login.save_session(db, user.id, cookies, current_app.config["ECLASS_SESSION_MINUTES"])
+                _remember_password(db, user.id, form.password.data, form.keep.data)
                 db.commit()
                 session.clear()  # a fresh session at sign-in (no session fixation)
                 login_user(user, remember=True)
@@ -64,6 +73,7 @@ def login():
 
 class ReconnectForm(FlaskForm):
     password = PasswordField(validators=[InputRequired(), Length(max=256)])
+    keep = BooleanField()
 
 
 def _account_key() -> str:
@@ -88,11 +98,14 @@ def reconnect():
             else:
                 db = database.session()
                 eclass_login.save_session(db, current_user.id, cookies, current_app.config["ECLASS_SESSION_MINUTES"])
+                _remember_password(db, current_user.id, form.password.data, form.keep.data)
                 db.commit()
                 tasks.start_sync(current_app._get_current_object(), current_user.id, "login")
                 return redirect(url_for("dashboard.home"))
+        form.password.data = ""
     message, status = MESSAGES.get(error, (None, 200))
-    return render_template("reconnect.html", form=form, error=T(message) if message else None), status
+    keep = autosync.state(database.session(), current_user.id) != "off"  # re-entering a stopped password: ticked
+    return render_template("reconnect.html", form=form, keep=keep, error=T(message) if message else None), status
 
 
 @bp.post("/logout")

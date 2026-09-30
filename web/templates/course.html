@@ -10,6 +10,7 @@
   <p class="muted">{{ course.professor or "" }}</p>
   <div class="hero-meta">
     <span class="chip"><svg class="ico" style="width: 15px; height: 15px"><use href="#i-file"/></svg><b class="num" data-count="{{ counts.files }}">{{ counts.files }}</b> {{ pl(counts.files, 'material') }}</span>
+    <span class="chip"><svg class="ico" style="width: 15px; height: 15px"><use href="#i-sparkles"/></svg><b class="num" data-count="{{ ready | length }}">{{ ready | length }}</b> {{ pl(ready | length, 'study_pack') }}</span>
     <span class="chip"><svg class="ico" style="width: 15px; height: 15px"><use href="#i-task"/></svg><b class="num" data-count="{{ counts.assign }}">{{ counts.assign }}</b> {{ pl(counts.assign, 'assignment') }}</span>
   </div>
   <div class="hero-actions">
@@ -61,6 +62,7 @@
             <span class="ext ext-{{ f.filename | ext }}">{{ f.filename | ext }}</span>
             <a class="fname" href="{{ url_for('dashboard.file', material_id=f.id) }}" target="_blank" rel="noopener" title="{{ f.filename }}">{{ f.filename }}</a>
             <span class="muted small size">{{ f.size | size }}</span>
+            {% if f.id in ready %}<a class="study-chip" href="{{ url_for('dashboard.study', material_id=f.id) }}"><svg class="ico"><use href="#i-sparkles"/></svg>{{ t('study.open') }}</a>{% endif %}
           </li>
           {% endfor %}
         </ul>
